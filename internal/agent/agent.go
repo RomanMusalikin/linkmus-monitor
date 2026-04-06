@@ -1,8 +1,10 @@
 package agent
 
 import (
+	"encoding/json" // Новый импорт для работы с JSON
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/cpu"
@@ -10,39 +12,54 @@ import (
 	"github.com/shirou/gopsutil/v3/mem"
 )
 
-func Run() {
-	log.Println("Агент запущен и готов к работе...")
+// MetricPayload — это структура нашего сообщения для сервера
+type MetricPayload struct {
+	NodeName  string  `json:"node_name"`
+	Timestamp string  `json:"timestamp"`
+	CPUUsage  float64 `json:"cpu_usage"`
+	RAMUsage  float64 `json:"ram_usage"`
+	DiskUsage float64 `json:"disk_usage"`
+}
 
-	ticker := time.NewTicker(10 * time.Second) // 10 секунд — золотой стандарт
+func Run() {
+	log.Println("Агент запущен. Начинаем упаковку данных...")
+
+	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for t := range ticker.C {
-		fmt.Printf("\n--- [Срез метрик: %s] ---\n", t.Format("15:04:05"))
-		collectAndSend()
+		collectAndSend(t)
 	}
 }
 
-func collectAndSend() {
-	// 1. CPU
+func collectAndSend(t time.Time) {
+	// 1. Собираем данные
 	cpuPercent, _ := cpu.Percent(time.Second, false)
-
-	// 2. RAM (Оперативка)
 	vMem, _ := mem.VirtualMemory()
-
-	// 3. Disk (Место на диске C: или /)
-	// В Windows используем "C:", в Linux обычно "/"
-	// Библиотека на Windows умная, поймет и "/"
 	dUsage, _ := disk.Usage("/")
+	hostname, _ := os.Hostname() // Получаем имя твоего ПК (DESKTOP-936KA0K)
 
-	// Выводим результат красиво
-	if len(cpuPercent) > 0 {
-		fmt.Printf("💻 CPU: %.2f%%\n", cpuPercent[0])
+	// 2. Заполняем наш "бланк" (структуру)
+	payload := MetricPayload{
+		NodeName:  hostname,
+		Timestamp: t.Format(time.RFC3339), // Стандарт времени для API
+		RAMUsage:  vMem.UsedPercent,
+		DiskUsage: dUsage.UsedPercent,
 	}
-	fmt.Printf("🧠 RAM: %.2f%% (Использовано: %v MB / Всего: %v MB)\n",
-		vMem.UsedPercent, vMem.Used/1024/1024, vMem.Total/1024/1024)
 
-	fmt.Printf("💾 Disk: %.2f%% (Свободно: %v GB)\n",
-		dUsage.UsedPercent, dUsage.Free/1024/1024/1024)
+	if len(cpuPercent) > 0 {
+		payload.CPUUsage = cpuPercent[0]
+	}
 
-	log.Println("\n[!] Подготовка JSON для отправки на сервер...")
+	// 3. Превращаем структуру в JSON (маршалинг)
+	// MarshalIndent делает JSON красивым для глаз (с отступами)
+	jsonData, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		log.Printf("Ошибка упаковки JSON: %v", err)
+		return
+	}
+
+	// Выводим результат
+	fmt.Println("\n📦 Сформирован JSON-пакет:")
+	fmt.Println(string(jsonData))
 }
