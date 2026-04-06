@@ -1,9 +1,11 @@
+// internal/agent/agent.go
 package agent
 
 import (
-	"encoding/json" // Новый импорт для работы с JSON
-	"fmt"
+	"bytes"
+	"encoding/json"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -22,7 +24,7 @@ type MetricPayload struct {
 }
 
 func Run() {
-	log.Println("Агент запущен. Начинаем упаковку данных...")
+	log.Println("Агент запущен. Начинаем сбор и отправку данных...")
 
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
@@ -37,7 +39,7 @@ func collectAndSend(t time.Time) {
 	cpuPercent, _ := cpu.Percent(time.Second, false)
 	vMem, _ := mem.VirtualMemory()
 	dUsage, _ := disk.Usage("/")
-	hostname, _ := os.Hostname() // Получаем имя твоего ПК (DESKTOP-936KA0K)
+	hostname, _ := os.Hostname()
 
 	// 2. Заполняем наш "бланк" (структуру)
 	payload := MetricPayload{
@@ -51,15 +53,29 @@ func collectAndSend(t time.Time) {
 		payload.CPUUsage = cpuPercent[0]
 	}
 
-	// 3. Превращаем структуру в JSON (маршалинг)
-	// MarshalIndent делает JSON красивым для глаз (с отступами)
-	jsonData, err := json.MarshalIndent(payload, "", "  ")
+	// 3. Превращаем структуру в компактный JSON (без лишних пробелов)
+	jsonData, err := json.Marshal(payload)
 	if err != nil {
-		log.Printf("Ошибка упаковки JSON: %v", err)
+		log.Printf("❌ Ошибка упаковки JSON: %v", err)
 		return
 	}
 
-	// Выводим результат
-	fmt.Println("\n📦 Сформирован JSON-пакет:")
-	fmt.Println(string(jsonData))
+	// 4. Отправляем данные на Мастер-сервер
+	serverURL := "http://127.0.0.1:8080/api/metrics"
+
+	// Используем bytes.NewBuffer для передачи JSON в тело запроса
+	resp, err := http.Post(serverURL, "application/json", bytes.NewBuffer(jsonData))
+	if err != nil {
+		log.Printf("❌ Ошибка связи с сервером: %v", err)
+		return
+	}
+	// Обязательно закрываем тело ответа, чтобы не было утечек памяти
+	defer resp.Body.Close()
+
+	// 5. Выводим статус отправки
+	if resp.StatusCode == http.StatusOK {
+		log.Printf("✅ Метрики успешно отправлены (Статус: %s)", resp.Status)
+	} else {
+		log.Printf("⚠️ Сервер вернул ошибку: %s", resp.Status)
+	}
 }
