@@ -1,33 +1,48 @@
-// internal/agent/agent.go
 package agent
 
 import (
 	"fmt"
 	"log"
 	"time"
+
+	"github.com/shirou/gopsutil/v3/cpu"
+	"github.com/shirou/gopsutil/v3/disk"
+	"github.com/shirou/gopsutil/v3/mem"
 )
 
-// Run — главная функция агента. Она блокирует выполнение и крутится в цикле.
 func Run() {
-	log.Println("Агент инициализирован. Начинаем работу...")
+	log.Println("Агент запущен и готов к работе...")
 
-	// Создаем тикер. Пока зашьем 5 секунд для удобства тестирования.
-	// Позже вынесем это в config.yaml
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(10 * time.Second) // 10 секунд — золотой стандарт
 	defer ticker.Stop()
 
-	// Бесконечный цикл, который ждет "тиков" от таймера
 	for t := range ticker.C {
-		fmt.Printf("\n[%s] Время собирать метрики!\n", t.Format("15:04:05"))
+		fmt.Printf("\n--- [Срез метрик: %s] ---\n", t.Format("15:04:05"))
 		collectAndSend()
 	}
 }
 
-// collectAndSend пока просто имитирует бурную деятельность
 func collectAndSend() {
-	// В будущем здесь мы вызовем сборщики CPU, RAM и т.д.
-	log.Println(" -> [Сбор] Сбор метрик ОС (заглушка)")
+	// 1. CPU
+	cpuPercent, _ := cpu.Percent(time.Second, false)
 
-	// А затем упакуем их в JSON и отправим POST-запросом
-	log.Println(" -> [Отправка] POST http://10.10.10.10:8080/api/metrics (заглушка)")
+	// 2. RAM (Оперативка)
+	vMem, _ := mem.VirtualMemory()
+
+	// 3. Disk (Место на диске C: или /)
+	// В Windows используем "C:", в Linux обычно "/"
+	// Библиотека на Windows умная, поймет и "/"
+	dUsage, _ := disk.Usage("/")
+
+	// Выводим результат красиво
+	if len(cpuPercent) > 0 {
+		fmt.Printf("💻 CPU: %.2f%%\n", cpuPercent[0])
+	}
+	fmt.Printf("🧠 RAM: %.2f%% (Использовано: %v MB / Всего: %v MB)\n",
+		vMem.UsedPercent, vMem.Used/1024/1024, vMem.Total/1024/1024)
+
+	fmt.Printf("💾 Disk: %.2f%% (Свободно: %v GB)\n",
+		dUsage.UsedPercent, dUsage.Free/1024/1024/1024)
+
+	log.Println("\n[!] Подготовка JSON для отправки на сервер...")
 }
