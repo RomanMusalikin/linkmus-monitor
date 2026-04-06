@@ -24,17 +24,26 @@ type MetricPayload struct {
 }
 
 func Run() {
-	log.Println("Агент запущен. Начинаем сбор и отправку данных...")
+	// 1. Читаем конфиг из файла
+	cfg, err := LoadConfig("configs/agent-config.yaml")
+	if err != nil {
+		log.Fatalf("❌ Ошибка загрузки конфига: %v", err)
+	}
 
-	ticker := time.NewTicker(10 * time.Second)
+	log.Printf("Агент запущен. Сервер: %s, Интервал: %s", cfg.Server.URL, cfg.Server.Interval)
+
+	// 2. Используем интервал из конфига
+	ticker := time.NewTicker(cfg.Server.Interval)
 	defer ticker.Stop()
 
 	for t := range ticker.C {
-		collectAndSend(t)
+		// 3. Передаем URL сервера из конфига в функцию
+		collectAndSend(t, cfg.Server.URL)
 	}
 }
 
-func collectAndSend(t time.Time) {
+// Добавили параметр serverURL
+func collectAndSend(t time.Time, serverURL string) {
 	// 1. Собираем данные
 	cpuPercent, _ := cpu.Percent(time.Second, false)
 	vMem, _ := mem.VirtualMemory()
@@ -44,7 +53,7 @@ func collectAndSend(t time.Time) {
 	// 2. Заполняем наш "бланк" (структуру)
 	payload := MetricPayload{
 		NodeName:  hostname,
-		Timestamp: t.Format(time.RFC3339), // Стандарт времени для API
+		Timestamp: t.Format(time.RFC3339),
 		RAMUsage:  vMem.UsedPercent,
 		DiskUsage: dUsage.UsedPercent,
 	}
@@ -53,28 +62,25 @@ func collectAndSend(t time.Time) {
 		payload.CPUUsage = cpuPercent[0]
 	}
 
-	// 3. Превращаем структуру в компактный JSON (без лишних пробелов)
+	// 3. Превращаем структуру в компактный JSON
 	jsonData, err := json.Marshal(payload)
 	if err != nil {
 		log.Printf("❌ Ошибка упаковки JSON: %v", err)
 		return
 	}
 
-	// 4. Отправляем данные на Мастер-сервер
-	serverURL := "http://127.0.0.1:8080/api/metrics"
-
-	// Используем bytes.NewBuffer для передачи JSON в тело запроса
+	// 4. Отправляем данные на Мастер-сервер по URL из параметров!
+	// Мы удалили жестко зашитый http://127.0.0.1:8080/api/metrics
 	resp, err := http.Post(serverURL, "application/json", bytes.NewBuffer(jsonData))
 	if err != nil {
 		log.Printf("❌ Ошибка связи с сервером: %v", err)
 		return
 	}
-	// Обязательно закрываем тело ответа, чтобы не было утечек памяти
 	defer resp.Body.Close()
 
 	// 5. Выводим статус отправки
 	if resp.StatusCode == http.StatusOK {
-		log.Printf("✅ Метрики успешно отправлены (Статус: %s)", resp.Status)
+		log.Printf("✅ Метрики успешно отправлены на %s (Статус: %s)", serverURL, resp.Status)
 	} else {
 		log.Printf("⚠️ Сервер вернул ошибку: %s", resp.Status)
 	}
