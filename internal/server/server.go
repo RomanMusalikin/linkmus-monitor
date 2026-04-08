@@ -10,11 +10,13 @@ import (
 )
 
 type MetricPayload struct {
-	NodeName  string  `json:"node_name"`
-	Timestamp string  `json:"timestamp"`
-	CPUUsage  float64 `json:"cpu_usage"`
-	RAMUsage  float64 `json:"ram_usage"`
-	DiskUsage float64 `json:"disk_usage"`
+	NodeName   string  `json:"node_name"`
+	Timestamp  string  `json:"timestamp"`
+	CPUUsage   float64 `json:"cpu_usage"`
+	RAMUsage   float64 `json:"ram_usage"`
+	DiskUsage  float64 `json:"disk_usage"`
+	RDPRunning bool    `json:"rdp_running"` // Добавили RDP
+	SMBRunning bool    `json:"smb_running"` // Добавили SMB
 }
 
 // dbConn хранит активное подключение к нашей SQLite
