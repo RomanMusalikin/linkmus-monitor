@@ -2,13 +2,13 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 )
 
-// Структура должна в точности совпадать с той, что в агенте
 type MetricPayload struct {
 	NodeName  string  `json:"node_name"`
 	Timestamp string  `json:"timestamp"`
@@ -17,14 +17,19 @@ type MetricPayload struct {
 	DiskUsage float64 `json:"disk_usage"`
 }
 
+// dbConn хранит активное подключение к нашей SQLite
+var dbConn *sql.DB
+
 func Run() {
-	// Говорим серверу: если пришел запрос на /api/metrics, передай его в функцию handleMetrics
+	// 1. Инициализируем БД (файл monitor.db появится в корне проекта)
+	dbConn = InitDB("monitor.db")
+	defer dbConn.Close() // Закроем БД только при полной остановке сервера
+
 	http.HandleFunc("/api/metrics", handleMetrics)
 
 	port := ":8080"
 	log.Printf("🚀 Мастер-сервер запущен. Слушаю порт %s...", port)
 
-	// Запускаем бесконечный цикл прослушивания порта
 	if err := http.ListenAndServe(port, nil); err != nil {
 		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}
@@ -32,25 +37,30 @@ func Run() {
 
 // Эта функция срабатывает каждый раз, когда кто-то стучится на /api/metrics
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
-	// Мы ждем только POST-запросы с данными
 	if r.Method != http.MethodPost {
 		http.Error(w, "Ожидается метод POST", http.StatusMethodNotAllowed)
 		return
 	}
 
 	var payload MetricPayload
-	// Декодируем JSON из тела запроса прямо в нашу структуру
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
 		http.Error(w, "Ошибка чтения JSON", http.StatusBadRequest)
 		return
 	}
 
-	// Красиво выводим то, что получили от агента
-	fmt.Printf("\n📥 Получены метрики от узла [%s]\n", payload.NodeName)
-	fmt.Printf("   Время: %s\n", payload.Timestamp)
-	fmt.Printf("   CPU: %.2f%% | RAM: %.2f%% | Disk: %.2f%%\n", payload.CPUUsage, payload.RAMUsage, payload.DiskUsage)
+	// 2. Вызываем функцию сохранения в БД
+	err = SaveMetric(dbConn, payload)
+	if err != nil {
+		log.Printf("❌ Ошибка записи в БД: %v", err)
+		http.Error(w, "Ошибка сохранения данных", http.StatusInternalServerError)
+		return
+	}
 
-	// Отправляем агенту HTTP-ответ 200 OK (Всё супер, данные принял!)
+	// 3. Выводим красивый лог об успешной записи
+	fmt.Printf("\n💾 Сохранено в БД: [%s] CPU: %.1f%% | RAM: %.1f%% | Disk: %.1f%%\n",
+		payload.NodeName, payload.CPUUsage, payload.RAMUsage, payload.DiskUsage)
+
+	// Отвечаем агенту, что всё хорошо
 	w.WriteHeader(http.StatusOK)
 }
