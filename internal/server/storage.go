@@ -55,3 +55,35 @@ func SaveMetric(db *sql.DB, payload MetricPayload) error {
 
 	return err
 }
+
+// GetRecentMetrics достает из БД последние N записей
+func GetRecentMetrics(db *sql.DB, limit int) ([]MetricPayload, error) {
+	// Запрос: выбираем данные, сортируем по времени по убыванию (свежие сверху)
+	query := `
+	SELECT node_name, timestamp, cpu_usage, ram_usage, disk_usage
+	FROM metrics
+	ORDER BY timestamp DESC
+	LIMIT ?`
+
+	rows, err := db.Query(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close() // Обязательно закрываем выборку
+
+	// Создаем пустой массив (срез) для наших метрик
+	var metrics []MetricPayload
+
+	// Проходимся по каждой строке из базы
+	for rows.Next() {
+		var m MetricPayload
+		// Копируем данные из строки БД в нашу структуру
+		err := rows.Scan(&m.NodeName, &m.Timestamp, &m.CPUUsage, &m.RAMUsage, &m.DiskUsage)
+		if err != nil {
+			return nil, err
+		}
+		metrics = append(metrics, m) // Добавляем в массив
+	}
+
+	return metrics, nil
+}

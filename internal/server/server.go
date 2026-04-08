@@ -39,6 +39,7 @@ func Run() {
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Ожидается метод POST", http.StatusMethodNotAllowed)
+		http.HandleFunc("/api/history", handleGetHistory)
 		return
 	}
 
