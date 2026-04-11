@@ -1,37 +1,48 @@
+import { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { Activity } from 'lucide-react';
 import Dashboard from './pages/Dashboard';
 import NodeDetail from './pages/NodeDetail';
-
-// Простой компонент шапки прямо здесь для начала (потом вынесем в components/layout/Header.jsx)
-const Header = () => (
-  <header className="bg-slate-800 border-b border-slate-700 px-6 py-4 flex items-center justify-between">
-    <div className="flex items-center gap-3">
-      <div className="bg-blue-500/20 p-2 rounded-lg">
-        <Activity className="text-blue-500 w-6 h-6" />
-      </div>
-      <h1 className="text-xl font-bold tracking-tight">LinkMus Monitor</h1>
-    </div>
-    <div className="text-slate-400 text-sm">
-      {/* Здесь потом сделаем живые часы и статус */}
-      Онлайн: 6/6 узлов
-    </div>
-  </header>
-);
+import Header from './components/layout/Header';
+import Sidebar from './components/layout/Sidebar';
 
 function App() {
+  // Состояние: открыт ли сайдбар (по умолчанию true для ПК, на мобилках скроем через CSS)
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Функция для переключения состояния
+  const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
   return (
     <Router>
-      <div className="min-h-screen flex flex-col">
-        <Header />
+      <div className="flex h-screen bg-slate-900 text-slate-100 overflow-hidden relative">
         
-        {/* Основной контент */}
-        <main className="flex-1 overflow-auto">
-          <Routes>
-            <Route path="/" element={<Dashboard />} />
-            <Route path="/node/:nodeId" element={<NodeDetail />} />
-          </Routes>
-        </main>
+        {/* Сайдбар (передаем состояние и функцию закрытия для мобилок) */}
+        <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
+
+        {/* Правая часть (Шапка + Рабочая область) */}
+        <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
+          
+          {/* Шапка (передаем функцию переключения) */}
+          <Header toggleSidebar={toggleSidebar} />
+          
+          {/* Основной контент */}
+          <main className="flex-1 overflow-x-hidden overflow-y-auto">
+            <Routes>
+              <Route path="/" element={<Dashboard />} />
+              <Route path="/node/:nodeId" element={<NodeDetail />} />
+            </Routes>
+          </main>
+
+        </div>
+        
+        {/* Затемнение фона на мобилках при открытом меню (чтобы закрыть по клику мимо) */}
+        {isSidebarOpen && (
+          <div 
+            className="fixed inset-0 bg-black/50 z-20 md:hidden"
+            onClick={() => setIsSidebarOpen(false)}
+          />
+        )}
+
       </div>
     </Router>
   );

@@ -5,6 +5,7 @@ import ProgressBar from '../components/common/ProgressBar';
 import CpuHistory from '../components/charts/CpuHistory';
 import CpuGauge from '../components/charts/CpuGauge';
 import RamPie from '../components/charts/RamPie';
+import RamBar from '../components/charts/RamBar';
 import DiskBars from '../components/charts/DiskBars';
 import NetworkLines from '../components/charts/NetworkLines';
 import { List, ShieldAlert } from 'lucide-react';
@@ -86,13 +87,9 @@ export default function NodeDetail() {
 
         {/* Секция RAM */}
         <MetricCard title="Оперативная память (RAM)" icon={Database} className="xl:col-span-1">
-          <div className="mb-6">
-            <div className="flex justify-between text-sm mb-2">
-              <span className="text-slate-400">Общая загрузка</span>
-              <span className="text-slate-200 font-medium">{ramData.used} / {ramData.total} GB</span>
-            </div>
-            <ProgressBar value={(ramData.used / ramData.total) * 100} />
-          </div>
+          
+          <RamBar used={ramData.used} total={ramData.total} />
+          
           <RamPie used={ramData.used} cached={ramData.cached} free={ramData.free} />
           {/* Легенда */}
           <div className="flex justify-center gap-4 text-xs mt-2">

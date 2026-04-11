@@ -1,4 +1,3 @@
-// internal/server/server.go
 package server
 
 import (
@@ -23,11 +22,13 @@ type MetricPayload struct {
 var dbConn *sql.DB
 
 func Run() {
-	// 1. Инициализируем БД (файл monitor.db появится в корне проекта)
+	// 1. Инициализируем БД
 	dbConn = InitDB("monitor.db")
-	defer dbConn.Close() // Закроем БД только при полной остановке сервера
+	defer dbConn.Close()
 
-	http.HandleFunc("/api/metrics", handleMetrics)
+	// 2. РЕГИСТРИРУЕМ ВСЕ МАРШРУТЫ ЗДЕСЬ (один раз при старте!)
+	http.HandleFunc("/api/metrics", handleMetrics) // Сюда стучатся агенты (POST)
+	http.HandleFunc("/api/nodes", HandleNodes)     // Сюда стучится React-фронтенд (GET) - эта функция лежит в api.go!
 
 	port := ":8080"
 	log.Printf("🚀 Мастер-сервер запущен. Слушаю порт %s...", port)
@@ -37,12 +38,12 @@ func Run() {
 	}
 }
 
-// Эта функция срабатывает каждый раз, когда кто-то стучится на /api/metrics
+// Эта функция срабатывает каждый раз, когда агент шлет POST на /api/metrics
 func handleMetrics(w http.ResponseWriter, r *http.Request) {
+	// Должен быть строго POST
 	if r.Method != http.MethodPost {
 		http.Error(w, "Ожидается метод POST", http.StatusMethodNotAllowed)
-		http.HandleFunc("/api/history", handleGetHistory)
-		return
+		return // <-- Ошибочная строка удалена отсюда!
 	}
 
 	var payload MetricPayload
@@ -52,7 +53,7 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 2. Вызываем функцию сохранения в БД
+	// Вызываем функцию сохранения в БД
 	err = SaveMetric(dbConn, payload)
 	if err != nil {
 		log.Printf("❌ Ошибка записи в БД: %v", err)
@@ -60,10 +61,9 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 3. Выводим красивый лог об успешной записи
+	// Выводим красивый лог
 	fmt.Printf("\n💾 Сохранено в БД: [%s] CPU: %.1f%% | RAM: %.1f%% | Disk: %.1f%%\n",
 		payload.NodeName, payload.CPUUsage, payload.RAMUsage, payload.DiskUsage)
 
-	// Отвечаем агенту, что всё хорошо
 	w.WriteHeader(http.StatusOK)
 }
