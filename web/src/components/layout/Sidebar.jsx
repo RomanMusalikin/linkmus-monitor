@@ -1,16 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
-import { LayoutDashboard, Server } from 'lucide-react';
+import { LayoutDashboard, Server, Menu } from 'lucide-react';
 
-const MOCK_NODES = [
-  { name: 'srv-mon-01', online: true },
-  { name: 'srv-corp-01', online: true },
-  { name: 'gw-border-01', online: true },
-  { name: 'cl-astra-01', online: true },
-  { name: 'cl-win-01', online: true },
-  { name: 'cl-redos-01', online: false },
-];
-
-export default function Sidebar({ isOpen, setIsOpen }) {
+export default function Sidebar({ isOpen, setIsOpen, toggleSidebar, nodes = [] }) {
   const location = useLocation();
 
   // Функция для закрытия меню на мобилках после клика по ссылке
@@ -30,13 +21,18 @@ export default function Sidebar({ isOpen, setIsOpen }) {
         md:relative md:translate-x-0 ${isOpen ? 'w-64' : 'w-20'}
       `}
     >
-      {/* Заголовок сайдбара (скрываем текст, если сужен) */}
-      <div className={`p-4 border-b border-slate-700/50 flex items-center ${isOpen ? 'justify-start' : 'justify-center'} h-[73px]`}>
-         {isOpen ? (
-           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Навигация</span>
-         ) : (
-           <span className="text-xs font-semibold text-slate-500">☰</span>
-         )}
+      {/* Шапка сайдбара — по высоте совпадает с Header */}
+      <div className="h-[73px] border-b border-slate-700/50 flex items-center px-4 justify-between">
+        {isOpen && (
+          <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">Навигация</span>
+        )}
+        <button
+          onClick={toggleSidebar}
+          className={`p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 transition-colors flex-shrink-0 ${!isOpen ? 'mx-auto' : ''}`}
+          title={isOpen ? 'Свернуть меню' : 'Развернуть меню'}
+        >
+          <Menu className="w-5 h-5" />
+        </button>
       </div>
       
       <nav className="flex-1 overflow-y-auto overflow-x-hidden p-3 space-y-6">
@@ -66,7 +62,7 @@ export default function Sidebar({ isOpen, setIsOpen }) {
           </div>
           
           <ul className="space-y-1">
-            {MOCK_NODES.map(node => {
+            {nodes.map(node => {
               const isActive = location.pathname === `/node/${node.name}`;
               return (
                 <li key={node.name}>

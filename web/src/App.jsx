@@ -4,26 +4,27 @@ import Dashboard from './pages/Dashboard';
 import NodeDetail from './pages/NodeDetail';
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
+import { useNodes } from './hooks/useNodes';
 
 function App() {
-  // Состояние: открыт ли сайдбар (по умолчанию true для ПК, на мобилках скроем через CSS)
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-
-  // Функция для переключения состояния
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
+
+  // Единственный источник данных об узлах — передаём и в Header, и в Sidebar
+  const { data: nodes } = useNodes();
+
+  const onlineCount = nodes?.filter(n => n.online).length ?? 0;
+  const totalCount = nodes?.length ?? 0;
 
   return (
     <Router>
       <div className="flex h-screen bg-slate-900 text-slate-100 overflow-hidden relative">
-        
-        {/* Сайдбар (передаем состояние и функцию закрытия для мобилок) */}
-        <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
 
-        {/* Правая часть (Шапка + Рабочая область) */}
+        <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} toggleSidebar={toggleSidebar} nodes={nodes ?? []} />
+
         <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-          
-          {/* Шапка (передаем функцию переключения) */}
-          <Header toggleSidebar={toggleSidebar} />
+
+          <Header toggleSidebar={toggleSidebar} onlineCount={onlineCount} totalCount={totalCount} />
           
           {/* Основной контент */}
           <main className="flex-1 overflow-x-hidden overflow-y-auto">

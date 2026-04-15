@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Activity, Menu } from 'lucide-react';
+import { Activity } from 'lucide-react';
 
-export default function Header({ onlineCount = 5, totalCount = 6, toggleSidebar }) {
+export default function Header({ onlineCount = 0, totalCount = 0 }) {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -12,15 +12,6 @@ export default function Header({ onlineCount = 5, totalCount = 6, toggleSidebar 
   return (
     <header className="bg-slate-800 border-b border-slate-700 px-4 sm:px-6 py-4 flex items-center justify-between z-10 relative">
       <div className="flex items-center gap-3 sm:gap-4">
-        
-        {/* Кнопка открытия/закрытия меню (Гамбургер) */}
-        <button 
-          onClick={toggleSidebar}
-          className="p-2 -ml-2 text-slate-400 hover:text-slate-100 hover:bg-slate-700 rounded-lg transition-colors focus:outline-none"
-        >
-          <Menu className="w-6 h-6" />
-        </button>
-
         {/* Логотип */}
         <div className="hidden sm:flex bg-blue-500/20 p-2 rounded-lg">
           <Activity className="text-blue-500 w-5 h-5 sm:w-6 sm:h-6" />
