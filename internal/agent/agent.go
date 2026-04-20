@@ -26,12 +26,15 @@ type MetricPayload struct {
 	LoggedUsers int     `json:"logged_users"`
 
 	// CPU
-	CPUUsage    float64 `json:"cpu_usage"`
-	CPUUser     float64 `json:"cpu_user"`
-	CPUSystem   float64 `json:"cpu_system"`
-	CPUModel    string  `json:"cpu_model"`
-	CPUFreqMHz  float64 `json:"cpu_freq_mhz"`
-	CPUCoresJSON string `json:"cpu_cores_json"` // JSON []float64
+	CPUUsage     float64 `json:"cpu_usage"`
+	CPUUser      float64 `json:"cpu_user"`
+	CPUSystem    float64 `json:"cpu_system"`
+	CPUIOwait    float64 `json:"cpu_iowait"`
+	CPUSteal     float64 `json:"cpu_steal"`
+	CPUTemp      float64 `json:"cpu_temp"`
+	CPUModel     string  `json:"cpu_model"`
+	CPUFreqMHz   float64 `json:"cpu_freq_mhz"`
+	CPUCoresJSON string  `json:"cpu_cores_json"` // JSON []float64
 
 	// Load average
 	LoadAvg1  float64 `json:"load_avg_1"`
@@ -47,10 +50,14 @@ type MetricPayload struct {
 	SwapTotal  float64 `json:"swap_total"`  // ГБ
 
 	// Диск
-	DiskUsage    float64 `json:"disk_usage"`    // % заполнения корневого раздела
-	DiskReadSec  float64 `json:"disk_read_sec"` // байт/сек чтение (суммарно)
-	DiskWriteSec float64 `json:"disk_write_sec"`// байт/сек запись (суммарно)
-	DisksJSON    string  `json:"disks_json"`    // JSON []DiskInfo — все разделы
+	DiskUsage    float64 `json:"disk_usage"`
+	DiskReadSec  float64 `json:"disk_read_sec"`
+	DiskWriteSec float64 `json:"disk_write_sec"`
+	DiskQueue    float64 `json:"disk_queue"`
+	DisksJSON    string  `json:"disks_json"`
+
+	// FSRM (Windows only, srv-corp-01)
+	FSRMJson string `json:"fsrm_json"`
 
 	// Службы
 	RDPRunning bool `json:"rdp_running"`
@@ -63,6 +70,11 @@ type MetricPayload struct {
 
 	// Сеть — все интерфейсы
 	AllIfacesJSON string `json:"all_ifaces_json"` // JSON []NetIfaceInfo
+
+	// TCP-соединения
+	TCPTotal       int `json:"tcp_total"`
+	TCPEstablished int `json:"tcp_established"`
+	TCPTimeWait    int `json:"tcp_timewait"`
 
 	// Процессы
 	ProcessCount  int    `json:"process_count"`
@@ -109,8 +121,8 @@ func collectAndSend(t time.Time, serverURL string) {
 	v, _ := mem.VirtualMemory()
 	s, _ := mem.SwapMemory()
 
-	// CPU: user%, system%, total%
-	cpuUser, cpuSystem, cpuTotal := collector.CollectCPUBreakdown()
+	// CPU: user%, system%, iowait%, steal%, total%
+	cpuUser, cpuSystem, cpuIOwait, cpuSteal, cpuTotal := collector.CollectCPUBreakdown()
 
 	// CPU по ядрам
 	cpuCores := collector.CollectCPUPerCore()
@@ -133,7 +145,11 @@ func collectAndSend(t time.Time, serverURL string) {
 	disksJSON, _ := json.Marshal(allDisks)
 
 	// Диск — I/O
-	diskReadSec, diskWriteSec := collector.CollectDiskIO()
+	diskReadSec, diskWriteSec, diskQueue := collector.CollectDiskIO()
+
+	// FSRM (только Windows-агент, на Linux вернёт nil)
+	fsrmList := collector.CollectFSRM()
+	fsrmJSON, _ := json.Marshal(fsrmList)
 
 	// Службы (RDP/SMB) — только Windows, на Linux возвращает false/false
 	rdpStatus, smbStatus := collector.CollectServices()
@@ -144,6 +160,12 @@ func collectAndSend(t time.Time, serverURL string) {
 	// Сеть — все интерфейсы
 	allIfaces := collector.CollectAllInterfaces()
 	allIfacesJSON, _ := json.Marshal(allIfaces)
+
+	// Температура CPU
+	cpuTemp := collector.CollectCPUTemp()
+
+	// TCP-соединения
+	tcpTotal, tcpEstablished, tcpTimeWait := collector.CollectTCPConnections()
 
 	// Процессы
 	processCount := collector.CollectProcessCount()
@@ -172,6 +194,9 @@ func collectAndSend(t time.Time, serverURL string) {
 		CPUUsage:     cpuTotal,
 		CPUUser:      cpuUser,
 		CPUSystem:    cpuSystem,
+		CPUIOwait:    cpuIOwait,
+		CPUSteal:     cpuSteal,
+		CPUTemp:      cpuTemp,
 		CPUModel:     cpuModel,
 		CPUFreqMHz:   cpuFreq,
 		CPUCoresJSON: string(cpuCoresJSON),
@@ -187,16 +212,21 @@ func collectAndSend(t time.Time, serverURL string) {
 		DiskUsage:    diskUsg,
 		DiskReadSec:  diskReadSec,
 		DiskWriteSec: diskWriteSec,
+		DiskQueue:    diskQueue,
 		DisksJSON:    string(disksJSON),
+		FSRMJson:     string(fsrmJSON),
 		RDPRunning:   rdpStatus,
 		SMBRunning:   smbStatus,
 		NetInterface: netInfo.Interface,
 		NetBytesRecv: netInfo.BytesRecvSec,
 		NetBytesSent: netInfo.BytesSentSec,
 		AllIfacesJSON: string(allIfacesJSON),
-		ProcessCount:  processCount,
-		ProcessesJSON: string(procsJSON),
-		TopMemJSON:    string(topMemJSON),
+		TCPTotal:       tcpTotal,
+		TCPEstablished: tcpEstablished,
+		TCPTimeWait:    tcpTimeWait,
+		ProcessCount:   processCount,
+		ProcessesJSON:  string(procsJSON),
+		TopMemJSON:     string(topMemJSON),
 	}
 
 	SendToServer(serverURL, payload)

@@ -45,8 +45,8 @@ func CollectAllDisks() []DiskInfo {
 	return result
 }
 
-// CollectDiskIO возвращает суммарную скорость чтения и записи по всем дискам (байт/сек).
-func CollectDiskIO() (readSec, writeSec float64) {
+// CollectDiskIO возвращает суммарную скорость чтения/записи (байт/сек) и среднюю длину очереди.
+func CollectDiskIO() (readSec, writeSec, queueLen float64) {
 	counters, err := disk.IOCounters()
 	if err != nil {
 		return
@@ -69,6 +69,18 @@ func CollectDiskIO() (readSec, writeSec float64) {
 				}
 			}
 		}
+	}
+
+	var qSum float64
+	var qCount int
+	for _, c := range counters {
+		if c.ReadCount+c.WriteCount > 0 {
+			qSum += float64(c.IopsInProgress)
+			qCount++
+		}
+	}
+	if qCount > 0 {
+		queueLen = qSum / float64(qCount)
 	}
 
 	prevDiskCounters = counters

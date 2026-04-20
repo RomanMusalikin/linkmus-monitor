@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { Monitor, Terminal, Trash2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { Monitor, Terminal, Trash2, Wifi } from 'lucide-react';
 import Sparkline from '../charts/Sparkline';
 import { deleteNode } from '../../lib/api';
 
@@ -30,22 +30,39 @@ function barColorClass(pct) {
   return 'bg-blue-500';
 }
 
-function MiniBar({ value }) {
+function fmtBytes(bytes) {
+  if (!bytes || bytes <= 0) return '0';
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)}M`;
+  if (bytes >= 1024) return `${(bytes / 1024).toFixed(0)}K`;
+  return `${Math.round(bytes)}`;
+}
+
+function MiniBar({ value, label, right }) {
   const safe = Math.min(Math.max(value || 0, 0), 100);
   return (
-    <div className="w-full bg-slate-700/60 h-1.5 rounded-full overflow-hidden">
-      <div className={`${barColorClass(safe)} h-full rounded-full transition-all duration-500`} style={{ width: `${safe}%` }} />
+    <div>
+      <div className="flex justify-between text-xs mb-1">
+        <span className="text-slate-500">{label}</span>
+        <span className={`tabular-nums font-medium ${colorByPct(safe)}`}>{right}</span>
+      </div>
+      <div className="w-full bg-slate-700/60 h-1.5 rounded-full overflow-hidden">
+        <div className={`${barColorClass(safe)} h-full rounded-full transition-all duration-500`}
+          style={{ width: `${safe}%` }} />
+      </div>
     </div>
   );
 }
 
-function ServiceDot({ label, active }) {
+function ProbeDot({ label, active, ms }) {
   return (
-    <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium
-      ${active ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-      <span className={`w-1.5 h-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-red-400'}`} />
+    <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-medium
+      ${active
+        ? 'bg-emerald-500/8 border-emerald-500/20 text-emerald-400'
+        : 'bg-slate-700/30 border-slate-700/40 text-slate-600'}`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? 'bg-emerald-400' : 'bg-slate-600'}`} />
       {label}
-    </span>
+      {active && ms > 0 && <span className="text-emerald-500/60 text-[10px]">{Math.round(ms)}ms</span>}
+    </div>
   );
 }
 
@@ -75,121 +92,127 @@ export default function NodeCard({ node, onDeleted }) {
     setConfirming(false);
   }
 
+  const netTotal = (node.netRecvSec || 0) + (node.netSentSec || 0);
+
   return (
     <Link
       to={`/node/${node.name}`}
-      className="group bg-slate-800/80 backdrop-blur-sm rounded-2xl p-5 border border-slate-700/50
+      className="group bg-slate-800/80 backdrop-blur-sm rounded-2xl border border-slate-700/50
                  hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5
-                 transition-all duration-200 block relative"
+                 transition-all duration-200 block relative overflow-hidden"
     >
-      {/* Заголовок */}
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex items-center gap-2.5">
-          <div className="relative">
-            <div className={`p-2 rounded-lg ${isWindows ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
-              {isWindows
-                ? <Monitor className="w-4 h-4 text-blue-400" />
-                : <Terminal className="w-4 h-4 text-emerald-400" />}
+      {/* Цветная полоска сверху по статусу */}
+      <div className={`h-0.5 w-full ${node.online ? 'bg-gradient-to-r from-emerald-500/60 to-blue-500/40' : 'bg-slate-700'}`} />
+
+      <div className="p-5">
+        {/* ── Заголовок ── */}
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="relative flex-shrink-0">
+              <div className={`p-2 rounded-xl ${isWindows ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
+                {isWindows
+                  ? <Monitor className="w-4 h-4 text-blue-400" />
+                  : <Terminal className="w-4 h-4 text-emerald-400" />}
+              </div>
+              <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-800
+                ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
             </div>
-            <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-800
-              ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
+            <div className="min-w-0">
+              <div className="font-semibold text-slate-100 text-sm leading-tight truncate max-w-[130px]">
+                {node.name}
+              </div>
+              <div className="text-xs text-slate-500 mt-0.5">{getOSLabel(node.os)}</div>
+            </div>
           </div>
-          <div>
-            <div className="font-semibold text-slate-100 text-sm leading-none mb-0.5">{node.name}</div>
-            <div className="text-xs text-slate-500">{getOSLabel(node.os)}</div>
+
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium
+              ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+              {node.online ? 'Online' : 'Offline'}
+            </span>
+
+            {!node.online && (
+              confirming ? (
+                <div className="flex items-center gap-1" onClick={e => e.preventDefault()}>
+                  <button onClick={handleDelete} disabled={deleting}
+                    className="text-xs px-2 py-0.5 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-all font-medium">
+                    {deleting ? '...' : 'Да'}
+                  </button>
+                  <button onClick={handleCancelConfirm}
+                    className="text-xs px-2 py-0.5 rounded-md bg-slate-700/50 text-slate-400 hover:bg-slate-700 border border-slate-600/30 transition-all">
+                    Нет
+                  </button>
+                </div>
+              ) : (
+                <button onClick={handleDelete} title="Удалить узел"
+                  className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              )
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <span className={`text-xs px-2 py-0.5 rounded-full font-medium
-            ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-            {node.online ? 'Online' : 'Offline'}
-          </span>
+        {/* IP + Uptime */}
+        <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
+          <span className="font-mono">{node.ip || '—'}</span>
+          {node.online ? (
+            <><span className="text-slate-700">·</span><span>⬆ {node.uptime || '0 ч.'}</span></>
+          ) : node.lastSeen ? (
+            <><span className="text-slate-700">·</span><span className="text-red-400/60">был {node.lastSeen}</span></>
+          ) : null}
+        </div>
 
-          {/* Кнопка удаления — только для offline */}
-          {!node.online && (
-            confirming ? (
-              <div className="flex items-center gap-1" onClick={e => e.preventDefault()}>
-                <button
-                  onClick={handleDelete}
-                  disabled={deleting}
-                  className="text-xs px-2 py-0.5 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-all font-medium"
-                >
-                  {deleting ? '...' : 'Удалить'}
-                </button>
-                <button
-                  onClick={handleCancelConfirm}
-                  className="text-xs px-2 py-0.5 rounded-md bg-slate-700/50 text-slate-400 hover:bg-slate-700 border border-slate-600/30 transition-all"
-                >
-                  Отмена
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={handleDelete}
-                title="Удалить узел"
-                className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-              </button>
-            )
+        {/* ── Метрики ── */}
+        <div className={`space-y-2.5 ${!node.online ? 'opacity-35 pointer-events-none' : ''}`}>
+          <MiniBar label="CPU" value={node.cpu}
+            right={`${node.cpu || 0}%`} />
+          <MiniBar label="RAM" value={ramPct}
+            right={`${(node.ramUsed || 0).toFixed(1)} / ${(node.ramTotal || 0).toFixed(1)} GB`} />
+          <MiniBar label="Disk" value={node.diskUsage}
+            right={`${(node.diskUsage || 0).toFixed(1)}%`} />
+
+          {/* Сеть + TCP */}
+          <div className="flex items-center justify-between pt-0.5">
+            <div className="flex items-center gap-1 text-xs text-slate-500">
+              <Wifi className="w-3 h-3" />
+              <span className="text-cyan-400 tabular-nums">↓{fmtBytes(node.netRecvSec)}</span>
+              <span className="text-blue-400 tabular-nums">↑{fmtBytes(node.netSentSec)}</span>
+              <span className="text-slate-600 text-[10px]">B/s</span>
+            </div>
+            {(node.tcpTotal || 0) > 0 && (
+              <span className="text-xs text-slate-600">
+                TCP: <span className="text-slate-400">{node.tcpEstablished || 0}</span>
+                <span className="text-slate-700">/{node.tcpTotal}</span>
+              </span>
+            )}
+          </div>
+        </div>
+
+        {/* ── Sparkline ── */}
+        <div className="mt-3 h-10">
+          <Sparkline data={node.cpuHistory} color={node.online ? '#3b82f6' : '#334155'} />
+        </div>
+
+        {/* ── Сервисные пробы ── */}
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {/* SSH всегда показываем */}
+          <ProbeDot label="SSH" active={node.sshReachable} ms={node.sshMs} />
+          {isWindows && (
+            <>
+              <ProbeDot label="RDP" active={node.rdpReachable} ms={node.rdpMs} />
+              <ProbeDot label="SMB" active={node.smbReachable} ms={node.smbMs} />
+            </>
+          )}
+          {node.httpReachable && (
+            <ProbeDot label="HTTP" active={node.httpReachable} ms={node.httpMs} />
+          )}
+          {(node.cpuTemp || 0) > 0 && (
+            <span className="text-xs text-amber-400/80 ml-auto self-center">
+              🌡 {Math.round(node.cpuTemp)}°C
+            </span>
           )}
         </div>
-      </div>
-
-      {/* IP + Uptime / Last seen */}
-      <div className="flex items-center gap-3 text-xs text-slate-500 mb-4">
-        <span>{node.ip || '—'}</span>
-        {node.online ? (
-          <><span className="text-slate-600">·</span><span>⬆ {node.uptime || '0 ч.'}</span></>
-        ) : node.lastSeen ? (
-          <><span className="text-slate-600">·</span><span className="text-red-400/70">Был онлайн: {node.lastSeen}</span></>
-        ) : null}
-      </div>
-
-      {/* Метрики */}
-      <div className={`space-y-3 ${!node.online ? 'opacity-40 pointer-events-none' : ''}`}>
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-slate-400">CPU</span>
-            <span className={`font-medium tabular-nums ${colorByPct(node.cpu)}`}>{node.cpu}%</span>
-          </div>
-          <MiniBar value={node.cpu} />
-        </div>
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-slate-400">RAM</span>
-            <span className="text-slate-300 tabular-nums">
-              <span className={colorByPct(ramPct)}>{node.ramUsed?.toFixed(1)}</span>
-              <span className="text-slate-500"> / {node.ramTotal?.toFixed(1)} GB</span>
-            </span>
-          </div>
-          <MiniBar value={ramPct} />
-        </div>
-        <div>
-          <div className="flex justify-between text-xs mb-1">
-            <span className="text-slate-400">Disk</span>
-            <span className={`font-medium tabular-nums ${colorByPct(node.diskUsage)}`}>
-              {node.diskUsage?.toFixed(1)}%
-            </span>
-          </div>
-          <MiniBar value={node.diskUsage} />
-        </div>
-      </div>
-
-      <div className="mt-4 h-10">
-        <Sparkline data={node.cpuHistory} color={node.online ? '#3b82f6' : '#475569'} />
-      </div>
-
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        {isWindows ? (
-          <>
-            <ServiceDot label="RDP" active={node.rdpRunning} />
-            <ServiceDot label="SMB" active={node.smbRunning} />
-          </>
-        ) : (
-          <ServiceDot label="SSH" active={node.online} />
-        )}
       </div>
     </Link>
   );

@@ -35,6 +35,17 @@ type ProcessInfo struct {
 	User string  `json:"user"`
 }
 
+// FSRMInfo — квота FSRM (Windows, srv-corp-01)
+type FSRMInfo struct {
+	QuotaPath         string  `json:"quotaPath"`
+	QuotaLimitBytes   int64   `json:"quotaLimitBytes"`
+	QuotaUsedBytes    int64   `json:"quotaUsedBytes"`
+	QuotaUsedPercent  float64 `json:"quotaUsedPercent"`
+	Violations24h     int     `json:"violations24h"`
+	LastViolationTime string  `json:"lastViolationTime"`
+	LastViolationType string  `json:"lastViolationType"`
+}
+
 // DiskInfo — дисковый раздел
 type DiskInfo struct {
 	Mount       string  `json:"mount"`
@@ -60,18 +71,21 @@ type NodeSummary struct {
 	LastSeen string `json:"lastSeen"`
 	Uptime   string `json:"uptime"`
 	BootTime string `json:"bootTime"`
-	Ping     int    `json:"ping"`
+
 
 	// CPU
-	CPU          int       `json:"cpu"`
-	CPUUser      float64   `json:"cpuUser"`
-	CPUSystem    float64   `json:"cpuSystem"`
-	CPUModel     string    `json:"cpuModel"`
-	CPUFreqMHz   float64   `json:"cpuFreqMHz"`
-	CPUCores     []float64 `json:"cpuCores"`
-	LoadAvg1     float64   `json:"loadAvg1"`
-	LoadAvg5     float64   `json:"loadAvg5"`
-	LoadAvg15    float64   `json:"loadAvg15"`
+	CPU        int       `json:"cpu"`
+	CPUUser    float64   `json:"cpuUser"`
+	CPUSystem  float64   `json:"cpuSystem"`
+	CPUIOwait  float64   `json:"cpuIowait"`
+	CPUSteal   float64   `json:"cpuSteal"`
+	CPUTemp    float64   `json:"cpuTemp"`
+	CPUModel   string    `json:"cpuModel"`
+	CPUFreqMHz float64   `json:"cpuFreqMHz"`
+	CPUCores   []float64 `json:"cpuCores"`
+	LoadAvg1   float64   `json:"loadAvg1"`
+	LoadAvg5   float64   `json:"loadAvg5"`
+	LoadAvg15  float64   `json:"loadAvg15"`
 
 	// RAM
 	RAMUsed    float64 `json:"ramUsed"`    // ГБ
@@ -82,9 +96,10 @@ type NodeSummary struct {
 	SwapTotal  float64 `json:"swapTotal"`  // ГБ
 
 	// Диск
-	DiskUsage    float64    `json:"diskUsage"` // %
+	DiskUsage    float64    `json:"diskUsage"`
 	DiskReadSec  float64    `json:"diskReadSec"`
 	DiskWriteSec float64    `json:"diskWriteSec"`
+	DiskQueue    float64    `json:"diskQueue"`
 	Disks        []DiskInfo `json:"disks"`
 
 	// Службы
@@ -97,11 +112,40 @@ type NodeSummary struct {
 	NetSentSec   float64        `json:"netSentSec"`
 	AllIfaces    []NetIfaceInfo `json:"allIfaces"`
 
+	// TCP-соединения
+	TCPTotal       int `json:"tcpTotal"`
+	TCPEstablished int `json:"tcpEstablished"`
+	TCPTimeWait    int `json:"tcpTimeWait"`
+
 	// Процессы
-	ProcessCount     int           `json:"processCount"`
-	LoggedUsers      int           `json:"loggedUsers"`
-	Processes        []ProcessInfo `json:"processes"`
-	TopMemProcesses  []ProcessInfo `json:"topMemProcesses"`
+	ProcessCount    int           `json:"processCount"`
+	LoggedUsers     int           `json:"loggedUsers"`
+	Processes       []ProcessInfo `json:"processes"`
+	TopMemProcesses []ProcessInfo `json:"topMemProcesses"`
+
+	// Сервисные пробы (server-side)
+	SSHReachable   bool    `json:"sshReachable"`
+	RDPReachable   bool    `json:"rdpReachable"`
+	SMBReachable   bool    `json:"smbReachable"`
+	HTTPReachable  bool    `json:"httpReachable"`
+	WinRMReachable bool    `json:"winrmReachable"`
+	DNSReachable   bool    `json:"dnsReachable"`
+	SSHMs          float64 `json:"sshMs"`
+	RDPMs          float64 `json:"rdpMs"`
+	SMBMs          float64 `json:"smbMs"`
+	HTTPMs         float64 `json:"httpMs"`
+	WinRMMs        float64 `json:"winrmMs"`
+	DNSMs          float64 `json:"dnsMs"`
+
+	// SNMP (server-side poller)
+	SNMPCollected  bool   `json:"snmpCollected"`
+	SNMPSysUpTime  uint32 `json:"snmpSysUpTime"`
+	SNMPSysName    string `json:"snmpSysName"`
+	SNMPCPULoad    int    `json:"snmpCpuLoad"`
+	SNMPIfCount    int    `json:"snmpIfCount"`
+
+	// FSRM (agent-side, Windows only)
+	FSRM []FSRMInfo `json:"fsrm"`
 
 	// История (для графиков)
 	CPUHistory []CpuPoint `json:"cpuHistory"`

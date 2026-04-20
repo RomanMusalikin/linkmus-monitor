@@ -89,6 +89,14 @@ func MigrateDB(db *sql.DB) {
 		`ALTER TABLE metrics ADD COLUMN boot_time       TEXT    DEFAULT ''`,
 		`ALTER TABLE metrics ADD COLUMN processes_json  TEXT    DEFAULT '[]'`,
 		`ALTER TABLE metrics ADD COLUMN top_mem_json    TEXT    DEFAULT '[]'`,
+		`ALTER TABLE metrics ADD COLUMN cpu_iowait      REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN cpu_steal       REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN cpu_temp        REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN tcp_total       INTEGER DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN tcp_established INTEGER DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN tcp_timewait    INTEGER DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN disk_queue      REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN fsrm_json       TEXT    DEFAULT '[]'`,
 	}
 	for _, stmt := range cols {
 		db.Exec(stmt)
@@ -99,22 +107,26 @@ func SaveMetric(db *sql.DB, p MetricPayload) error {
 	_, err := db.Exec(`
 	INSERT INTO metrics (
 		node_name, os, ip, uptime, boot_time, timestamp, logged_users,
-		cpu_usage, cpu_user, cpu_system, cpu_model, cpu_freq_mhz, cpu_cores_json,
+		cpu_usage, cpu_user, cpu_system, cpu_iowait, cpu_steal, cpu_temp,
+		cpu_model, cpu_freq_mhz, cpu_cores_json,
 		load_avg_1, load_avg_5, load_avg_15,
 		ram_usage, ram_total, ram_cached, ram_buffers, swap_used, swap_total,
-		disk_usage, disk_read_sec, disk_write_sec, disks_json,
+		disk_usage, disk_read_sec, disk_write_sec, disk_queue, disks_json,
 		rdp_running, smb_running,
 		net_interface, net_bytes_recv, net_bytes_sent, all_ifaces_json,
-		process_count, processes_json, top_mem_json
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		tcp_total, tcp_established, tcp_timewait,
+		process_count, processes_json, top_mem_json, fsrm_json
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		p.NodeName, p.OS, p.IP, p.Uptime, p.BootTime, p.Timestamp, p.LoggedUsers,
-		p.CPUUsage, p.CPUUser, p.CPUSystem, p.CPUModel, p.CPUFreqMHz, p.CPUCoresJSON,
+		p.CPUUsage, p.CPUUser, p.CPUSystem, p.CPUIOwait, p.CPUSteal, p.CPUTemp,
+		p.CPUModel, p.CPUFreqMHz, p.CPUCoresJSON,
 		p.LoadAvg1, p.LoadAvg5, p.LoadAvg15,
 		p.RAMUsage, p.RAMTotal, p.RAMCached, p.RAMBuffers, p.SwapUsed, p.SwapTotal,
-		p.DiskUsage, p.DiskReadSec, p.DiskWriteSec, p.DisksJSON,
+		p.DiskUsage, p.DiskReadSec, p.DiskWriteSec, p.DiskQueue, p.DisksJSON,
 		p.RDPRunning, p.SMBRunning,
 		p.NetInterface, p.NetBytesRecv, p.NetBytesSent, p.AllIfacesJSON,
-		p.ProcessCount, p.ProcessesJSON, p.TopMemJSON,
+		p.TCPTotal, p.TCPEstablished, p.TCPTimeWait,
+		p.ProcessCount, p.ProcessesJSON, p.TopMemJSON, p.FSRMJson,
 	)
 	return err
 }
@@ -137,54 +149,62 @@ func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
 
 	for _, name := range nodeNames {
 		var (
-			lastTimestamp                     string
-			cpuUsage                          float64
-			cpuUser, cpuSystem                sql.NullFloat64
-			cpuModel                          sql.NullString
-			cpuFreq                           sql.NullFloat64
-			cpuCoresJSON                      sql.NullString
-			la1, la5, la15                    sql.NullFloat64
-			ramUsage, ramTotal                float64
-			ramCached, ramBuffers             sql.NullFloat64
-			swapUsed, swapTotal               sql.NullFloat64
-			diskUsage                         float64
-			diskReadSec, diskWriteSec         sql.NullFloat64
-			disksJSON                         sql.NullString
-			rdpRunning, smbRunning            bool
-			os_, ip, uptime                   string
-			bootTime                          sql.NullString
-			netIface                          sql.NullString
-			netRecv, netSent                  sql.NullFloat64
-			allIfacesJSON                     sql.NullString
-			processCount, loggedUsers         sql.NullInt64
-			procsJSON, topMemJSON             sql.NullString
+			lastTimestamp                       string
+			cpuUsage                            float64
+			cpuUser, cpuSystem                  sql.NullFloat64
+			cpuIOwait, cpuSteal, cpuTemp        sql.NullFloat64
+			cpuModel                            sql.NullString
+			cpuFreq                             sql.NullFloat64
+			cpuCoresJSON                        sql.NullString
+			la1, la5, la15                      sql.NullFloat64
+			ramUsage, ramTotal                  float64
+			ramCached, ramBuffers               sql.NullFloat64
+			swapUsed, swapTotal                 sql.NullFloat64
+			diskUsage                           float64
+			diskReadSec, diskWriteSec           sql.NullFloat64
+			diskQueue                           sql.NullFloat64
+			disksJSON                           sql.NullString
+			fsrmJSON                            sql.NullString
+			rdpRunning, smbRunning              bool
+			os_, ip, uptime                     string
+			bootTime                            sql.NullString
+			netIface                            sql.NullString
+			netRecv, netSent                    sql.NullFloat64
+			allIfacesJSON                       sql.NullString
+			tcpTotal, tcpEstab, tcpTW           sql.NullInt64
+			processCount, loggedUsers           sql.NullInt64
+			procsJSON, topMemJSON               sql.NullString
 		)
 
 		err := db.QueryRow(`
 			SELECT
 				timestamp,
-				cpu_usage, cpu_user, cpu_system, cpu_model, cpu_freq_mhz, cpu_cores_json,
+				cpu_usage, cpu_user, cpu_system, cpu_iowait, cpu_steal, cpu_temp,
+				cpu_model, cpu_freq_mhz, cpu_cores_json,
 				load_avg_1, load_avg_5, load_avg_15,
 				ram_usage, ram_total, ram_cached, ram_buffers, swap_used, swap_total,
-				disk_usage, disk_read_sec, disk_write_sec, disks_json,
+				disk_usage, disk_read_sec, disk_write_sec, COALESCE(disk_queue,0), disks_json,
 				rdp_running, smb_running,
 				os, ip, uptime, boot_time,
 				net_interface, net_bytes_recv, net_bytes_sent, all_ifaces_json,
+				tcp_total, tcp_established, tcp_timewait,
 				process_count, logged_users,
-				processes_json, top_mem_json
+				processes_json, top_mem_json, COALESCE(fsrm_json,'[]')
 			FROM metrics
 			WHERE node_name = ?
 			ORDER BY timestamp DESC LIMIT 1`, name).Scan(
 			&lastTimestamp,
-			&cpuUsage, &cpuUser, &cpuSystem, &cpuModel, &cpuFreq, &cpuCoresJSON,
+			&cpuUsage, &cpuUser, &cpuSystem, &cpuIOwait, &cpuSteal, &cpuTemp,
+			&cpuModel, &cpuFreq, &cpuCoresJSON,
 			&la1, &la5, &la15,
 			&ramUsage, &ramTotal, &ramCached, &ramBuffers, &swapUsed, &swapTotal,
-			&diskUsage, &diskReadSec, &diskWriteSec, &disksJSON,
+			&diskUsage, &diskReadSec, &diskWriteSec, &diskQueue, &disksJSON,
 			&rdpRunning, &smbRunning,
 			&os_, &ip, &uptime, &bootTime,
 			&netIface, &netRecv, &netSent, &allIfacesJSON,
+			&tcpTotal, &tcpEstab, &tcpTW,
 			&processCount, &loggedUsers,
-			&procsJSON, &topMemJSON,
+			&procsJSON, &topMemJSON, &fsrmJSON,
 		)
 		if err != nil {
 			log.Printf("Ошибка получения метрики для %s: %v", name, err)
@@ -225,6 +245,13 @@ func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
 			json.Unmarshal([]byte(topMemJSON.String), &topMemProcesses)
 		}
 
+		var fsrmList []FSRMInfo
+		if fsrmJSON.Valid && fsrmJSON.String != "" && fsrmJSON.String != "null" {
+			json.Unmarshal([]byte(fsrmJSON.String), &fsrmList)
+		}
+
+		probe := GetProbe(ip)
+		snmp := GetSNMP(ip)
 		summary := NodeSummary{
 			Name:         name,
 			OS:           os_,
@@ -233,10 +260,13 @@ func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
 			LastSeen:     lastSeen,
 			Uptime:       uptime,
 			BootTime:     bootTime.String,
-			Ping:         1,
+
 			CPU:          int(cpuUsage),
 			CPUUser:      cpuUser.Float64,
 			CPUSystem:    cpuSystem.Float64,
+			CPUIOwait:    cpuIOwait.Float64,
+			CPUSteal:     cpuSteal.Float64,
+			CPUTemp:      cpuTemp.Float64,
 			CPUModel:     cpuModel.String,
 			CPUFreqMHz:   cpuFreq.Float64,
 			CPUCores:     cpuCores,
@@ -252,6 +282,7 @@ func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
 			DiskUsage:    diskUsage,
 			DiskReadSec:  diskReadSec.Float64,
 			DiskWriteSec: diskWriteSec.Float64,
+			DiskQueue:    diskQueue.Float64,
 			Disks:        disks,
 			RDPRunning:   rdpRunning,
 			SMBRunning:   smbRunning,
@@ -259,13 +290,34 @@ func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
 			NetRecvSec:   netRecv.Float64,
 			NetSentSec:   netSent.Float64,
 			AllIfaces:    allIfaces,
+			TCPTotal:     int(tcpTotal.Int64),
+			TCPEstablished: int(tcpEstab.Int64),
+			TCPTimeWait:  int(tcpTW.Int64),
 			ProcessCount: int(processCount.Int64),
 			LoggedUsers:  int(loggedUsers.Int64),
 			Processes:    processes,
 			TopMemProcesses: topMemProcesses,
-			CPUHistory:   queryCPUHistory(db, name),
-			RAMHistory:   queryRAMHistory(db, name),
-			NetHistory:   queryNetHistory(db, name),
+			SSHReachable:   probe.SSHReachable,
+			RDPReachable:   probe.RDPReachable,
+			SMBReachable:   probe.SMBReachable,
+			HTTPReachable:  probe.HTTPReachable,
+			WinRMReachable: probe.WinRMReachable,
+			DNSReachable:   probe.DNSReachable,
+			SSHMs:          probe.SSHMs,
+			RDPMs:          probe.RDPMs,
+			SMBMs:          probe.SMBMs,
+			HTTPMs:         probe.HTTPMs,
+			WinRMMs:        probe.WinRMMs,
+			DNSMs:          probe.DNSMs,
+			SNMPCollected:  snmp.Collected,
+			SNMPSysUpTime:  snmp.SysUpTimeSec,
+			SNMPSysName:    snmp.SysName,
+			SNMPCPULoad:    snmp.CPULoad,
+			SNMPIfCount:    snmp.IfCount,
+			FSRM:           fsrmList,
+			CPUHistory:     queryCPUHistory(db, name),
+			RAMHistory:     queryRAMHistory(db, name),
+			NetHistory:     queryNetHistory(db, name),
 		}
 
 		nodes = append(nodes, summary)

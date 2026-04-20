@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "defaultMode": "bypassPermissions",
+    "deny": [
+      "Bash(rm *)",
+      "Bash(del *)",
+      "Bash(Remove-Item *)"
+    ]
+  }
+}

@@ -1,0 +1,64 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build frontend
+        run: |
+          cd web
+          npm ci
+          npm run build
+
+      - name: Build server (linux/amd64)
+        run: |
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/mon-server ./cmd/server/
+
+      - name: Build agent (linux/amd64)
+        run: |
+          GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o dist/mon-agent-linux ./cmd/agent/
+
+      - name: Build agent (windows/amd64)
+        run: |
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o dist/mon-agent.exe ./cmd/agent/
+
+      - name: Build agent (linux/arm64)
+        run: |
+          GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/mon-agent-linux-arm64 ./cmd/agent/
+
+      - name: Package server with frontend
+        run: |
+          cp -r web/dist dist/web-dist
+          cd dist
+          tar czf mon-server-linux-amd64.tar.gz mon-server web-dist
+          zip -r mon-agent-windows-amd64.zip mon-agent.exe
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/mon-server-linux-amd64.tar.gz
+            dist/mon-agent-linux
+            dist/mon-agent-linux-arm64
+            dist/mon-agent-windows-amd64.zip
+          generate_release_notes: true

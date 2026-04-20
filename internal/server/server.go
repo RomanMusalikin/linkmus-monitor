@@ -22,6 +22,9 @@ type MetricPayload struct {
 	CPUUsage     float64 `json:"cpu_usage"`
 	CPUUser      float64 `json:"cpu_user"`
 	CPUSystem    float64 `json:"cpu_system"`
+	CPUIOwait    float64 `json:"cpu_iowait"`
+	CPUSteal     float64 `json:"cpu_steal"`
+	CPUTemp      float64 `json:"cpu_temp"`
 	CPUModel     string  `json:"cpu_model"`
 	CPUFreqMHz   float64 `json:"cpu_freq_mhz"`
 	CPUCoresJSON string  `json:"cpu_cores_json"`
@@ -40,7 +43,9 @@ type MetricPayload struct {
 	DiskUsage    float64 `json:"disk_usage"`
 	DiskReadSec  float64 `json:"disk_read_sec"`
 	DiskWriteSec float64 `json:"disk_write_sec"`
+	DiskQueue    float64 `json:"disk_queue"`
 	DisksJSON    string  `json:"disks_json"`
+	FSRMJson     string  `json:"fsrm_json"`
 
 	RDPRunning bool `json:"rdp_running"`
 	SMBRunning bool `json:"smb_running"`
@@ -50,9 +55,12 @@ type MetricPayload struct {
 	NetBytesSent  float64 `json:"net_bytes_sent"`
 	AllIfacesJSON string  `json:"all_ifaces_json"`
 
-	ProcessCount  int    `json:"process_count"`
-	ProcessesJSON string `json:"processes_json"`
-	TopMemJSON    string `json:"top_mem_json"`
+	TCPTotal       int    `json:"tcp_total"`
+	TCPEstablished int    `json:"tcp_established"`
+	TCPTimeWait    int    `json:"tcp_timewait"`
+	ProcessCount   int    `json:"process_count"`
+	ProcessesJSON  string `json:"processes_json"`
+	TopMemJSON     string `json:"top_mem_json"`
 }
 
 var dbConn *sql.DB
@@ -85,6 +93,9 @@ func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 func Run() {
 	dbConn = InitDB("monitor.db")
 	defer dbConn.Close()
+
+	StartProber(dbConn)
+	StartSNMPPoller(dbConn)
 
 	// Агент — без авторизации
 	http.HandleFunc("/api/metrics", handleMetrics)
@@ -125,12 +136,12 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("💾 [%s] CPU:%.1f%% | RAM:%.1f/%.1fGB | Disk:%.1f%% R:%.0fB/s W:%.0fB/s | Net↓%.0fB/s↑%.0fB/s | Procs:%d\n",
-		payload.NodeName, payload.CPUUsage,
+	fmt.Printf("💾 [%s] CPU:%.1f%%(iow:%.1f%%) | RAM:%.1f/%.1fGB | Disk:%.1f%% | Net↓%.0fB/s↑%.0fB/s | TCP:%d | Procs:%d\n",
+		payload.NodeName, payload.CPUUsage, payload.CPUIOwait,
 		payload.RAMUsage, payload.RAMTotal,
-		payload.DiskUsage, payload.DiskReadSec, payload.DiskWriteSec,
+		payload.DiskUsage,
 		payload.NetBytesRecv, payload.NetBytesSent,
-		payload.ProcessCount,
+		payload.TCPTotal, payload.ProcessCount,
 	)
 
 	w.WriteHeader(http.StatusOK)
