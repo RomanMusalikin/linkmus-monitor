@@ -1,849 +1,396 @@
-# LinkMus Monitor
+# 🖥️ LinkMus Monitor
 
-Система мониторинга гетерогенной сетевой инфраструктуры. Кросс-платформенные агенты (Linux / Windows) отправляют метрики на мастер-сервер (Go + SQLite), который отдаёт их веб-интерфейсу (React + Vite + Tailwind).
-
-Курсовой проект по дисциплине «Телекоммуникационные технологии в отраслях транспортно-дорожного комплекса» — МАДИ, группа 2бИТС1.
-
----
-
-## Содержание
-
-1. [Архитектура и модель взаимодействия](#1-архитектура-и-модель-взаимодействия)
-2. [Инфраструктура лабораторного стенда](#2-инфраструктура-лабораторного-стенда)
-3. [Структура директорий](#3-структура-директорий)
-4. [Бэкенд (Go)](#4-бэкенд-go)
-   - [cmd/ — точки входа](#41-cmd--точки-входа)
-   - [internal/agent — агент сбора метрик](#42-internalagent--агент-сбора-метрик)
-   - [internal/collector — коллекторы метрик](#43-internalcollector--коллекторы-метрик)
-   - [internal/server — мастер-сервер](#44-internalserver--мастер-сервер)
-5. [База данных (SQLite)](#5-база-данных-sqlite)
-6. [Фронтенд (React)](#6-фронтенд-react)
-   - [Точка входа и роутинг](#61-точка-входа-и-роутинг)
-   - [Слой работы с API](#62-слой-работы-с-api)
-   - [Хуки (hooks)](#63-хуки-hooks)
-   - [Страницы (pages)](#64-страницы-pages)
-   - [Компоненты (components)](#65-компоненты-components)
-7. [Как фронтенд взаимодействует с бэкендом](#7-как-фронтенд-взаимодействует-с-бэкендом)
-8. [Полный путь данных: от агента до браузера](#8-полный-путь-данных-от-агента-до-браузера)
-9. [API-контракт](#9-api-контракт)
-10. [Конфигурация](#10-конфигурация)
-11. [Сборка и запуск](#11-сборка-и-запуск)
-12. [Деплой на боевые узлы](#12-деплой-на-боевые-узлы)
-13. [Go-зависимости](#13-go-зависимости)
-14. [Пороги алертов](#14-пороги-алертов)
-15. [Правило добавления новой метрики](#15-правило-добавления-новой-метрики)
+> Система мониторинга гетерогенной сетевой инфраструктуры в реальном времени.  
+> Курсовая работа по дисциплине **«Телекоммуникационные технологии в отраслях транспортно-дорожного комплекса»** — МАДИ, группа 2бИТС1.
 
 ---
 
-## 1. Архитектура и модель взаимодействия
+## 📋 Содержание
 
-Система построена по **push-модели**: агент сам инициирует отправку данных, сервер пассивно принимает.
+1. [О проекте](#-о-проекте)
+2. [Архитектура](#-архитектура)
+3. [Технологический стек](#-технологический-стек)
+4. [Инфраструктура стенда](#-инфраструктура-стенда)
+5. [Собираемые метрики](#-собираемые-метрики)
+6. [Структура проекта](#-структура-проекта)
+7. [Быстрый старт](#-быстрый-старт)
+8. [Сборка и деплой](#-сборка-и-деплой)
+9. [API-контракт](#-api-контракт)
+10. [Схема базы данных](#-схема-базы-данных)
+11. [Добавление новой метрики](#-добавление-новой-метрики)
+12. [Пороги алертов](#-пороги-алертов)
+13. [Авторство](#-авторство)
+
+---
+
+## 🎯 О проекте
+
+**LinkMus Monitor** — кроссплатформенная система мониторинга состояния узлов корпоративной сети. Разработана для гетерогенной среды, где одновременно работают машины на Windows, Astra Linux, Ubuntu и РЕД ОС.
+
+**Ключевые возможности:**
+- Push-модель: агенты сами отправляют метрики на сервер, не требуя входящих подключений
+- Кросс-платформенность: один бинарник агента для Linux (amd64), другой для Windows (amd64)
+- Богатый набор метрик: CPU по ядрам, RAM+Swap, все диски, disk I/O, все сетевые интерфейсы, топ процессов по CPU и RAM, статус служб
+- Автоматическое определение офлайн-узлов: если агент не присылал данные более 30 секунд — узел помечается недоступным
+- Живые графики с абсолютным временем на осях
+- Адаптивный интерфейс: тёмная тема, плавная боковая панель, мобильная поддержка
+
+---
+
+## 🏗️ Архитектура
+
+### Модель взаимодействия
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                         БРАУЗЕР                              │
-│   React-приложение (Vite dev-server или dist/)               │
-│   GET /api/nodes  ──────────────────────────────────────┐    │
-└─────────────────────────────────────────────────────────│────┘
-                                                          │ JSON
-┌──────────────────────────────────────────────────────────────┐
-│                    МАСТЕР-СЕРВЕР  (Go)                       │
-│   mon-server   :8080                                         │
-│                                                              │
-│   POST /api/metrics  ◄─── агент отправляет метрики           │
-│   GET  /api/nodes    ───► отдаёт список узлов + историю      │
-│                                                              │
-│   SQLite  monitor.db  (хранит всю телеметрию)                │
-└──────────────────────────────────────────────────────────────┘
-         ▲                        ▲
-         │  HTTP POST JSON        │  HTTP POST JSON
-         │  каждые x сек          │  каждые x сек
-┌────────┴──────────┐    ┌────────┴──────────┐
-│  mon-agent        │    │  mon-agent        │
-│  Windows          │    │  Linux            │
-│  (WMI / gopsutil) │    │  (/proc, /sys)    │
-└───────────────────┘    └───────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│                        БРАУЗЕР                             │
+│  React-приложение (Vite dev или dist/)                     │
+│  GET /api/nodes каждые 5 сек  ────────────────────────┐    │
+└───────────────────────────────────────────────────────│────┘
+                                                        │ JSON
+┌───────────────────────────────────────────────────────│────┐
+│                  МАСТЕР-СЕРВЕР (Go)                   │    │
+│  mon-server  :8080                                    │    │
+│                                                       │    │
+│  POST /api/metrics ◄── агенты шлют метрики каждые 3с  │    │
+│  GET  /api/nodes   ──────────────────────────────────►│    │
+│                                                            │
+│  SQLite  monitor.db  (накопительная история метрик)        │
+└────────────────────────────────────────────────────────────┘
+      ▲                ▲                ▲              ▲
+      │ HTTP POST      │ HTTP POST      │ HTTP POST    │ HTTP POST
+      │ JSON  3с       │ JSON  3с       │ JSON  3с     │ JSON  3с
+┌─────┴──────┐  ┌──────┴─────┐  ┌──────┴─────┐  ┌────┴───────┐
+│ mon-agent  │  │ mon-agent  │  │ mon-agent  │  │ mon-agent  │
+│ Windows    │  │ Astra Linux│  │ Ubuntu     │  │ РЕД ОС    │
+│ WMI+gops  │  │ /proc+gops │  │ /proc+gops │  │ /proc+gops│
+└────────────┘  └────────────┘  └────────────┘  └────────────┘
 ```
 
-**Nginx** на боевом сервере `srv-mon-01` служит обратным прокси: статика React раздаётся с диска, запросы `/api/*` проксируются на `127.0.0.1:8080`.
+### Nginx как обратный прокси (production)
 
-В режиме разработки роль прокси берёт на себя **Vite dev-server** (настроен в `vite.config.js`).
+```
+Internet ──► WAN:8080 ──► DNAT ──► 10.10.10.10:80 ──► Nginx
+                                         │
+                                    ┌────┴────────────────────┐
+                                    │  /api/*  → :8080 (Go)  │
+                                    │  /*      → web/dist/   │
+                                    └─────────────────────────┘
+```
+
+В **dev-режиме** роль прокси берёт Vite (`vite.config.js`): все запросы на `/api/*` автоматически проксируются на `http://localhost:8080`.
 
 ---
 
-## 2. Инфраструктура лабораторного стенда
+## 🛠️ Технологический стек
 
-Стенд развёрнут на VMware Workstation с вложенной виртуализацией ESXi 8.0.2. Все виртуальные машины подключены к изолированному L2-сегменту `vSwitch-Lab`.
+| Компонент | Технология | Описание |
+|-----------|-----------|----------|
+| **Агент** | Go 1.21+, `gopsutil/v3`, `wmi` | Кросс-компиляция: linux/amd64, windows/amd64 |
+| **Сервер** | Go 1.21+, `net/http` | REST API, без фреймворков |
+| **База данных** | SQLite (`modernc.org/sqlite`) | Pure-Go, без CGo — удобная кросс-компиляция |
+| **Фронтенд** | React 18, Vite, Tailwind CSS v3 | Тёмная тема, адаптивная вёрстка |
+| **Графики** | Recharts | AreaChart, линейные графики с градиентом |
+| **Иконки** | Lucide React | Консистентный набор SVG-иконок |
+| **Роутинг** | React Router v6 | SPA-роутинг: `/` и `/node/:nodeId` |
+| **Метрики Linux** | `/proc`, `/sys`, `gopsutil/v3` | CPU, RAM, диск, сеть, процессы |
+| **Метрики Windows** | WMI (`Win32_*`), `gopsutil/v3` | CPU, RAM, диск, сеть, службы |
+| **Прокси** | Nginx | Обратный прокси на `srv-mon-01` |
+
+---
+
+## 🌐 Инфраструктура стенда
+
+Стенд развёрнут на **VMware Workstation** с вложенной виртуализацией **ESXi 8.0.2**. Все VM подключены к изолированному L2-сегменту `vSwitch-Lab (10.10.10.0/24)`.
 
 ### Карта узлов
 
-| Имя ВМ | ОС | IP | vCPU | RAM | Роль | Источник метрик |
-|--------|----|----|------|-----|------|-----------------|
-| gw-border-01 | MikroTik RouterOS 7.20.8 | 10.10.10.1 | 1 | 1 ГБ | Шлюз, NAT, DNS, Firewall | SNMP / RouterOS API |
-| srv-mon-01 | Astra Linux CE «Орёл» 2.12 | 10.10.10.10 | 2 | 4 ГБ | **Мастер-сервер мониторинга** | Локальный агент |
-| srv-corp-01 | Windows Server 2022 | 10.10.10.11 | 4 | 4 ГБ | Корпоративный сервер | WMI, SNMP, FSRM, Event Log |
-| cl-astra-01 | Astra Linux CE «Орёл» 2.12 | 10.10.10.100 | 1 | 2 ГБ | АРМ (DEB) | /proc, /sys |
-| cl-win-01 | Windows 10 Pro | 10.10.10.101 | 2 | 4 ГБ | АРМ (Windows) | WMI, RDP/SMB |
-| cl-ubnt-01 | Ubuntu Desktop 24.04 | 10.10.10.102 | 1 | 2 ГБ | АРМ (DEB) | /proc, /sys |
-| cl-redos-01 | РЕД ОС 8.2 | 10.10.10.103 | 1 | 2 ГБ | АРМ (RPM) | /proc, /sys |
+| Имя ВМ | ОС | IP-адрес | vCPU | RAM | Роль | Метрики |
+|--------|----|----|------|-----|------|---------|
+| `gw-border-01` | MikroTik RouterOS 7.20.8 | 10.10.10.1 | 1 | 1 ГБ | Шлюз, NAT, DNS, Firewall | SNMP / RouterOS API |
+| `srv-mon-01` | Astra Linux CE «Орёл» 2.12 | 10.10.10.10 | 2 | 4 ГБ | **Мастер-сервер + Nginx** | Локальный агент |
+| `srv-corp-01` | Windows Server 2022 | 10.10.10.11 | 4 | 4 ГБ | Корпоративный сервер | WMI, SNMP, FSRM |
+| `cl-astra-01` | Astra Linux CE «Орёл» 2.12 | 10.10.10.100 | 1 | 2 ГБ | АРМ (DEB) | /proc, /sys |
+| `cl-win-01` | Windows 10 Pro | 10.10.10.101 | 2 | 4 ГБ | АРМ (Windows) | WMI, RDP, SMB |
+| `cl-ubnt-01` | Ubuntu Desktop 24.04 | 10.10.10.102 | 1 | 2 ГБ | АРМ (DEB) | /proc, /sys |
+| `cl-redos-01` | РЕД ОС 8.2 | 10.10.10.103 | 1 | 2 ГБ | АРМ (RPM) | /proc, /sys |
 
-### Сетевая топология
+### Топология сети
 
 ```
 Internet
     │
-    │ 192.168.5.0/24  (внешняя сеть ESXi)
+    │ 192.168.5.0/24  (внешняя сеть ESXi, WAN MikroTik: 192.168.5.144)
     │
-[gw-border-01]  10.10.10.1
-MikroTik CHR
-WAN: 192.168.5.144
-LAN: 10.10.10.1
-NAT: srcnat masquerade
-DNAT: WAN:8080 → 10.10.10.10:80  ← публичный доступ к дашборду
+[gw-border-01]  MikroTik RouterOS
+  ├─ NAT: srcnat masquerade (выход в интернет)
+  ├─ DNAT: WAN:8080 → 10.10.10.10:80  (публичный доступ к дашборду)
+  └─ DNS: кэширующий резолвер для 10.10.10.0/24
     │
     │ 10.10.10.0/24  (vSwitch-Lab, изолированный L2)
     ├── srv-mon-01   10.10.10.10   ← мастер-сервер + Nginx
-    ├── srv-corp-01  10.10.10.11
+    ├── srv-corp-01  10.10.10.11   ← WMI, SNMP, FSRM
     ├── cl-astra-01  10.10.10.100
     ├── cl-win-01    10.10.10.101
     ├── cl-ubnt-01   10.10.10.102
     └── cl-redos-01  10.10.10.103
 ```
 
-### Сетевые роли
+---
 
-- **Серверный пул:** `10.10.10.10 – 10.10.10.19`
-- **Клиентский пул:** `10.10.10.100 – 10.10.10.150`
-- **DNS:** MikroTik (10.10.10.1) — кэширующий резолвер для всей сети
-- **Внешний доступ к дашборду:** `http://<WAN_IP>:8080` → DNAT → `10.10.10.10:80` → Nginx → React
+## 📊 Собираемые метрики
+
+Агент реализован для обеих платформ с build-тегами (`//go:build windows`, `//go:build linux`). Все дельта-метрики (CPU, сеть, disk I/O) вычисляются между двумя последовательными снимками — первый вызов всегда возвращает 0.
+
+### CPU
+
+| Метрика | Источник Linux | Источник Windows | Описание |
+|---------|---------------|-----------------|----------|
+| `cpu_usage` | `/proc/stat` δ | `cpu.Times()` δ | Суммарная загрузка, % |
+| `cpu_user` | `/proc/stat` δ | `cpu.Times()` δ | User-пространство, % |
+| `cpu_system` | `/proc/stat` δ | `cpu.Times()` δ | Kernel-пространство, % |
+| `cpu_cores_json` | `/proc/stat` (cpuN) | `cpu.Times(true)` | Загрузка каждого ядра, `[]float64` |
+| `cpu_model` | `/proc/cpuinfo` | `cpu.Info()` | Название модели процессора |
+| `cpu_freq_mhz` | `cpu.Info()` | `cpu.Info()` | Текущая частота, МГц |
+| `load_avg_1/5/15` | `/proc/loadavg` | — (0 на Windows) | Load average |
+
+### Память (RAM)
+
+| Метрика | Источник | Описание |
+|---------|----------|----------|
+| `ram_usage` | `mem.VirtualMemory()` | Используется, ГБ |
+| `ram_total` | `mem.VirtualMemory()` | Всего, ГБ |
+| `ram_cached` | `mem.VirtualMemory()` | Кэш страниц, ГБ (Linux) |
+| `ram_buffers` | `mem.VirtualMemory()` | Буферы ядра, ГБ (Linux) |
+| `swap_used` | `mem.SwapMemory()` | Swap используется, ГБ |
+| `swap_total` | `mem.SwapMemory()` | Swap всего, ГБ |
+
+### Диски
+
+| Метрика | Источник | Описание |
+|---------|----------|----------|
+| `disk_usage` | `disk.Usage("/")` или `("C:\\")` | Заполнение корневого раздела, % |
+| `disks_json` | `disk.Partitions()` + `disk.Usage()` | Все разделы: mount, fstype, ГБ, % |
+| `disk_read_sec` | `disk.IOCounters()` δ | Суммарное чтение, байт/сек |
+| `disk_write_sec` | `disk.IOCounters()` δ | Суммарная запись, байт/сек |
+
+> Linux-коллектор фильтрует виртуальные ФС: `tmpfs`, `devtmpfs`, `sysfs`, `proc`, `cgroup` и монтирования в `/sys`, `/proc`, `/dev`.
+
+### Сеть
+
+| Метрика | Источник | Описание |
+|---------|----------|----------|
+| `net_interface` | `net.Interfaces()` | Имя основного интерфейса |
+| `net_bytes_recv` | `net.IOCounters()` δ | Входящий трафик, байт/сек |
+| `net_bytes_sent` | `net.IOCounters()` δ | Исходящий трафик, байт/сек |
+| `all_ifaces_json` | `net.IOCounters(true)` δ | Все интерфейсы: имя, recv, sent |
+
+> Основной интерфейс определяется по совпадению IP: открывается UDP-соединение на `8.8.8.8:80` (без реальной отправки), из адреса вычитывается outbound IP, затем ищется интерфейс с этим IP. Если не найден — выбирается интерфейс с максимальным `BytesRecv`.
+
+### Процессы
+
+| Метрика | Источник | Описание |
+|---------|----------|----------|
+| `processes_json` | `process.Processes()` | Топ-10 по CPU: PID, Name, CPU%, RAM, User |
+| `top_mem_json` | `process.Processes()` | Топ-10 по RAM: PID, Name, CPU%, RAM, User |
+| `process_count` | `process.Processes()` | Общее количество процессов |
+
+### Службы и система
+
+| Метрика | Источник | Описание |
+|---------|----------|----------|
+| `rdp_running` | WMI `Win32_Service` (Windows) | Статус службы `TermService` |
+| `smb_running` | WMI `Win32_Service` (Windows) | Статус службы `LanmanServer` |
+| `uptime` | `host.Info()` | Время работы: «N ч.» |
+| `boot_time` | `host.Info()` | Дата последней загрузки |
+| `logged_users` | `host.Users()` | Количество залогиненных пользователей |
 
 ---
 
-## 3. Структура директорий
+## 📁 Структура проекта
 
 ```
 linkmus-monitor/
 │
-├── cmd/                        # Точки входа (исполняемые программы)
+├── cmd/
 │   ├── agent/
-│   │   └── main.go             # Запуск агента: вызывает agent.Run()
+│   │   └── main.go                  # Точка входа агента
 │   └── server/
-│       └── main.go             # Запуск сервера: вызывает server.Run()
+│       └── main.go                  # Точка входа сервера
 │
 ├── configs/
-│   └── agent-config.yaml       # Адрес сервера и интервал отправки агента
+│   └── agent-config.yaml            # URL сервера и интервал отправки
 │
-├── internal/                   # Весь внутренний код (не экспортируется как библиотека)
+├── internal/
 │   ├── agent/
-│   │   ├── agent.go            # Главный цикл: сбор → упаковка → отправка
-│   │   ├── config.go           # Чтение agent-config.yaml
-│   │   └── sender.go           # HTTP POST на сервер
+│   │   ├── agent.go                 # collectAndSend(): сбор всех метрик + MetricPayload
+│   │   ├── config.go                # LoadConfig() → yaml → struct
+│   │   └── sender.go                # SendToServer() → HTTP POST JSON
 │   │
-│   ├── collector/              # Платформо-специфичный сбор метрик
-│   │   ├── common.go           # Интерфейс Collector и базовая структура
-│   │   ├── cpu_windows.go      # CPU: gopsutil + ручной расчёт дельты
-│   │   ├── memory_windows.go   # RAM и Swap: gopsutil/mem
-│   │   ├── disk_windows.go     # Диск: gopsutil/disk (C:\)
-│   │   ├── network_windows.go  # Сеть: gopsutil/net, байт/сек по дельте
-│   │   ├── process_windows.go  # Топ-10 процессов по CPU: gopsutil/process
-│   │   └── services_windows.go # Статус служб RDP и SMB через WMI
+│   ├── collector/
+│   │   ├── common.go                # Общие типы: DiskInfo, NetIfaceInfo
+│   │   ├── cpu_windows.go           # CollectCPUBreakdown(), CollectCPUPerCore(), CollectCPUInfo()
+│   │   ├── cpu_linux.go             # То же для Linux
+│   │   ├── disk_windows.go          # CollectDisk(), CollectAllDisks(), CollectDiskIO()
+│   │   ├── disk_linux.go            # То же для Linux (с фильтрацией виртуальных ФС)
+│   │   ├── network_windows.go       # CollectNetwork(), CollectAllInterfaces()
+│   │   ├── network_linux.go         # То же для Linux
+│   │   ├── process_windows.go       # CollectProcesses(), CollectTopMemProcesses(), CollectProcessCount()
+│   │   ├── process_linux.go         # То же для Linux
+│   │   ├── memory_windows.go        # CollectMemory() (legacy)
+│   │   ├── memory_linux.go          # То же для Linux
+│   │   ├── services_windows.go      # CollectServices() → WMI Win32_Service (RDP, SMB)
+│   │   └── services_linux.go        # Заглушка: return false, false
 │   │
 │   └── server/
-│       ├── server.go           # HTTP-хендлеры, запуск сервера
-│       ├── api.go              # Структуры ответа, GET /api/nodes
-│       └── storage.go          # SQLite: инит, миграции, запись, чтение
+│       ├── server.go                # Run(), handleMetrics(), MetricPayload struct
+│       ├── api.go                   # HandleNodes(), NodeSummary, CpuPoint, RamPoint, NetPoint
+│       └── storage.go               # InitDB(), MigrateDB(), SaveMetric(), GetLatestNodes()
 │
-├── monitor.db                  # SQLite-файл базы данных (создаётся автоматически)
+├── monitor.db                       # SQLite-файл (создаётся автоматически)
+├── go.mod / go.sum
 │
-├── go.mod / go.sum             # Модуль Go: linkmus-monitor
-│
-└── web/                        # Фронтенд (React + Vite)
-    ├── vite.config.js          # Прокси /api/* → localhost:8080
+└── web/
+    ├── vite.config.js               # Proxy /api/* → localhost:8080
     ├── tailwind.config.js
     ├── package.json
-    │
-    ├── dist/                   # Собранная статика (npm run build)
-    │
+    ├── dist/                        # Production-сборка (npm run build)
     └── src/
-        ├── main.jsx            # Точка входа React, монтирует <App />
-        ├── App.jsx             # Роутер, Layout (Header + Sidebar + <Routes>)
-        │
+        ├── App.jsx                  # Router + Layout (Sidebar + Header)
+        ├── main.jsx
         ├── lib/
-        │   └── api.js          # fetchNodes(), fetchNodeDetail() — fetch-запросы
-        │
+        │   └── api.js               # fetchNodes() — единственная точка работы с API
         ├── hooks/
-        │   ├── useAutoRefresh.js   # Базовый хук polling с setTimeout
-        │   ├── useNodes.js         # Обёртка: useAutoRefresh(fetchNodes, 5000)
-        │   └── useNodeDetail.js    # Обёртка: useAutoRefresh(fetchNodeDetail, 5000)
-        │
+        │   ├── useAutoRefresh.js    # Polling через рекурсивный setTimeout
+        │   ├── useNodes.js          # useAutoRefresh(fetchNodes, 5000)
+        │   └── useNodeDetail.js     # useAutoRefresh(fetchNodeDetail, 5000)
         ├── pages/
-        │   ├── Dashboard.jsx   # Главная: сводные карточки + сетка узлов
-        │   └── NodeDetail.jsx  # Детальная страница узла
-        │
+        │   ├── Dashboard.jsx        # Сводные карточки + сетка NodeCard
+        │   └── NodeDetail.jsx       # Детальная страница: CPU/RAM/Disk/Net/Процессы/Службы
         └── components/
-            ├── cards/
-            │   └── NodeCard.jsx        # Карточка узла в сетке Dashboard
-            ├── charts/
-            │   ├── CpuGauge.jsx        # Круговой индикатор загрузки CPU
-            │   ├── CpuHistory.jsx      # AreaChart истории CPU (Recharts)
-            │   ├── DiskBars.jsx        # Бары дисков (поддерживает % и GB)
-            │   ├── NetworkLines.jsx    # График RX/TX (Recharts LineChart)
-            │   ├── RamBar.jsx          # Горизонтальный бар памяти
-            │   ├── RamPie.jsx          # Круговая диаграмма памяти
-            │   └── Sparkline.jsx       # Мини-график для NodeCard
-            ├── common/
-            │   ├── MetricCard.jsx      # Универсальная карточка с заголовком
-            │   └── ProgressBar.jsx     # Полоса прогресса с цветовой индикацией
             ├── layout/
-            │   ├── Header.jsx          # Верхняя панель (кнопка меню, название)
-            │   └── Sidebar.jsx         # Боковая навигация (Dashboard, узлы)
+            │   ├── Header.jsx       # Время, счётчик онлайн/всего
+            │   └── Sidebar.jsx      # Навигация + список узлов + кнопка ☰
+            ├── cards/
+            │   └── NodeCard.jsx     # Карточка узла: метрики, sparkline, бейджи служб
+            ├── charts/
+            │   ├── CpuGauge.jsx     # Круговой SVG-индикатор CPU
+            │   ├── CpuHistory.jsx   # AreaChart истории CPU (Recharts)
+            │   ├── NetworkLines.jsx # AreaChart RX/TX (Recharts)
+            │   ├── DiskBars.jsx     # Горизонтальные бары дисков
+            │   ├── RamBar.jsx       # Бар памяти
+            │   ├── RamPie.jsx       # Круговая диаграмма памяти
+            │   └── Sparkline.jsx    # Мини-график для NodeCard
+            ├── common/
+            │   ├── MetricCard.jsx   # Универсальная карточка с заголовком
+            │   └── ProgressBar.jsx  # Полоса прогресса с цветовой индикацией
             ├── status/
-            │   ├── ServiceStatus.jsx   # Индикаторы служб (SSH/RDP/SMB)
-            │   └── FsrmQuota.jsx       # Блок FSRM-квот (Windows Server)
+            │   ├── ServiceStatus.jsx
+            │   └── FsrmQuota.jsx
             └── tables/
-                └── ProcessTable.jsx    # Таблица топ-процессов
+                └── ProcessTable.jsx
 ```
 
 ---
 
-## 4. Бэкенд (Go)
+## 🚀 Быстрый старт
 
-### 4.1 `cmd/` — точки входа
-
-Два самостоятельных бинарника компилируются из одного модуля `linkmus-monitor`:
-
-|         Файл          |             Бинарник          |                Что делает               |
-|-----------------------|-------------------------------|-----------------------------------------|
-|   `cmd/agent/main.go` | `mon-agent` / `mon-agent.exe` | Запускает агент на мониторируемом узле  |
-|  `cmd/server/main.go` | `mon-server`                  | Запускает мастер-сервер на `srv-mon-01` |
-
-Оба файла минимальны — по 5–10 строк. Вся логика вынесена в `internal/`.
-
----
-
-### 4.2 `internal/agent` — агент сбора метрик
-
-#### `config.go` — загрузка конфигурации
-
-Читает `configs/agent-config.yaml` через `gopkg.in/yaml.v3`. Конфигурация содержит два поля:
-
-```yaml
-server:
-  url: "http://127.0.0.1:8080/api/metrics"  # куда слать метрики
-  interval: 3s                               # как часто
-```
-
-Структура `Config` автоматически парсит `interval` как `time.Duration` (строку `"3s"` → 3 секунды).
-
-#### `agent.go` — главный цикл
-
-Функция `Run()` создаёт `time.Ticker` на заданный интервал и в цикле вызывает `collectAndSend()`.
-
-`collectAndSend()` выполняет следующие шаги:
-
-1. **Системная информация** — `gopsutil/host`: hostname, OS, время аптайма
-2. **IP-адрес** — `getOutboundIP()`: открывает UDP-соединение на `8.8.8.8:80` (не отправляет пакеты), из адреса соединения вычитывает локальный IP
-3. **CPU** — `collector.CollectCPUBreakdown()`: возвращает user%, system%, total%
-4. **Load average** — `gopsutil/load` (на Windows всегда 0, на Linux — реальные значения)
-5. **RAM и Swap** — `gopsutil/mem`: `VirtualMemory()` и `SwapMemory()`
-6. **Диск** — `collector.CollectDisk()`
-7. **Службы** — `collector.CollectServices()`: статус RDP и SMB
-8. **Сеть** — `collector.CollectNetwork(outboundIP)`: имя интерфейса, байт/сек
-9. **Процессы** — `collector.CollectProcesses()`: топ-10 по CPU, сериализуется в JSON-строку
-
-Все данные упаковываются в структуру `MetricPayload` и передаются в `sender.go`.
-
-#### `sender.go` — HTTP-отправка
-
-`SendToServer()` сериализует `MetricPayload` в JSON и делает `http.Post` на URL из конфига. При успехе (HTTP 200) печатает краткую сводку в лог.
-
----
-
-### 4.3 `internal/collector` — коллекторы метрик
-
-Каждый файл снабжён build-тегом `//go:build windows` (в будущем появятся `_linux.go` версии). Все функции **stateful** — хранят предыдущий снимок в глобальных переменных модуля для расчёта дельт.
-
-#### `cpu_windows.go`
-
-```
-Первый вызов: запоминает cpu.Times() → возвращает 0
-Следующие вызовы: δuser/δtotal×100, δsystem/δtotal×100, (1-δidle/δtotal)×100
-```
-
-Использует `gopsutil/v3/cpu`. Глобальная переменная `prevCPUTimes` хранит предыдущий снимок между вызовами.
-
-#### `memory_windows.go`
-
-Использует `gopsutil/v3/mem`. Возвращает используемую и общую RAM и Swap в байтах. Агент конвертирует в ГБ перед отправкой.
-
-#### `disk_windows.go`
-
-Проверяет использование диска `C:\` через `gopsutil/v3/disk`. Возвращает процент заполнения (0–100).
-
-#### `network_windows.go`
-
-1. Получает счётчики всех интерфейсов через `gopsutil/v3/net`
-2. Определяет основной интерфейс: ищет тот, чей IP совпадает с `outboundIP`; если не нашёл — берёт с максимальным `BytesRecv`
-3. Рассчитывает скорость: `(currBytes - prevBytes) / dtSeconds`
-4. Хранит предыдущий снимок в `prevNetCounters` (map по имени интерфейса) и `prevNetTime`
-
-#### `process_windows.go`
-
-Получает список всех процессов через `gopsutil/v3/process`. Для каждого читает имя, `CPUPercent()`, RSS-память, имя пользователя. Сортирует по CPU desc, обрезает до топ-10.
-
-> Первый вызов всегда вернёт `cpu=0` для всех процессов — gopsutil требует два снимка для расчёта дельты.
-
-#### `services_windows.go`
-
-Через WMI (`github.com/yusufpapurcu/wmi`) делает запрос к `Win32_Service`:
-```sql
-SELECT State FROM Win32_Service WHERE Name = 'TermService'   -- RDP
-SELECT State FROM Win32_Service WHERE Name = 'LanmanServer'  -- SMB
-```
-Возвращает `true` если `State == "Running"`.
-
----
-
-### 4.4 `internal/server` — мастер-сервер
-
-#### `server.go` — HTTP-хендлеры
-
-`Run()` инициализирует SQLite (`InitDB`), регистрирует два хендлера и запускает `http.ListenAndServe(":8080")`.
-
-**`POST /api/metrics`** — `handleMetrics()`:
-1. Проверяет метод (405 если не POST)
-2. Десериализует тело запроса в `MetricPayload`
-3. Вызывает `SaveMetric(dbConn, payload)`
-4. Печатает строку лога с ключевыми метриками
-5. Возвращает HTTP 200
-
-**`GET /api/nodes`** — `HandleNodes()` (в `api.go`):
-1. Устанавливает заголовки `Content-Type: application/json` и `Access-Control-Allow-Origin: *`
-2. Вызывает `GetLatestNodes(dbConn)`
-3. Сериализует результат в JSON
-
-#### `api.go` — структуры ответа
-
-Определяет все структуры, которые уходят на фронтенд:
-
-| Структура | Назначение |
-|-----------|-----------|
-| `NodeSummary` | Полный набор данных по одному узлу |
-| `CpuPoint` | `{value: int}` — одна точка истории CPU |
-| `RamPoint` | `{value: int}` — одна точка истории RAM (в %) |
-| `NetPoint` | `{recv: float64, sent: float64}` — одна точка истории сети |
-| `ProcessInfo` | `{pid, name, cpu, ram, user}` — один процесс |
-
-`NodeSummary` содержит:
-- Базовые поля: `name`, `os`, `ip`, `online`, `uptime`
-- CPU: `cpu` (int, %), `cpuUser`, `cpuSystem`, `loadAvg1/5/15`
-- RAM: `ramUsed`, `ramTotal`, `ramCached`, `ramBuffers`, `swapUsed`, `swapTotal` (все в ГБ)
-- Диск: `diskUsage` (%)
-- Сеть: `netInterface`, `netRecvSec`, `netSentSec` (байт/сек)
-- Службы: `rdpRunning`, `smbRunning` (bool)
-- Истории: `cpuHistory[]`, `ramHistory[]`, `netHistory[]` (последние 20 точек)
-- Процессы: `processes[]`
-
-#### `storage.go` — работа с SQLite
-
-**`InitDB(filepath)`** — открывает (или создаёт) файл `monitor.db`, создаёт таблицу `metrics` и вызывает `MigrateDB`.
-
-**`MigrateDB(db)`** — добавляет новые колонки к существующей таблице через `ALTER TABLE ... ADD COLUMN`. Ошибки при повторном выполнении (колонка уже существует) игнорируются — это позволяет безопасно обновлять схему без потери данных.
-
-**`SaveMetric(db, payload)`** — вставляет одну строку в таблицу `metrics`. Каждый вызов агента = одна строка в БД.
-
-**`GetLatestNodes(db)`** — основная функция чтения:
-1. `SELECT DISTINCT node_name FROM metrics` — получает список всех узлов, которые когда-либо отправляли данные
-2. Для каждого узла — `SELECT ... ORDER BY timestamp DESC LIMIT 1` — последняя строка (актуальное состояние)
-3. `queryCPUHistory` — последние 20 значений `cpu_usage` в хронологическом порядке (DESC LIMIT 20, затем разворот)
-4. `queryRAMHistory` — последние 20 точек RAM в процентах: `used/total*100`
-5. `queryNetHistory` — последние 20 пар `(recv, sent)`
-6. Парсит `processes_json` из JSON-строки в `[]ProcessInfo`
-7. Собирает `NodeSummary` и добавляет в результирующий слайс
-
----
-
-## 5. База данных (SQLite)
-
-Файл `monitor.db` в корне проекта. Используется `modernc.org/sqlite` — pure-Go реализация без CGo, что позволяет кросс-компилировать сервер под Linux без установленного `gcc`.
-
-### Таблица `metrics`
-
-```sql
-CREATE TABLE IF NOT EXISTS metrics (
-    id             INTEGER PRIMARY KEY AUTOINCREMENT,
-    node_name      TEXT,        -- hostname агента
-    os             TEXT,        -- "windows Windows 10 Pro"
-    ip             TEXT,        -- "10.10.10.101"
-    uptime         TEXT,        -- "36 ч."
-    timestamp      DATETIME,    -- RFC3339 от агента
-
-    -- CPU
-    cpu_usage      REAL,        -- суммарная загрузка CPU, %
-    cpu_user       REAL,        -- user%, добавлено миграцией
-    cpu_system     REAL,        -- system%, добавлено миграцией
-    load_avg_1     REAL,        -- load average 1m (Linux)
-    load_avg_5     REAL,
-    load_avg_15    REAL,
-
-    -- RAM
-    ram_usage      REAL,        -- использовано, ГБ
-    ram_total      REAL,        -- всего, ГБ
-    ram_cached     REAL,        -- кэш, ГБ
-    ram_buffers    REAL,        -- буферы, ГБ
-    swap_used      REAL,        -- Swap используется, ГБ
-    swap_total     REAL,        -- Swap всего, ГБ
-
-    -- Диск
-    disk_usage     REAL,        -- заполнение C:\ или /, %
-
-    -- Службы Windows
-    rdp_running    BOOLEAN,
-    smb_running    BOOLEAN,
-
-    -- Сеть
-    net_interface  TEXT,        -- имя интерфейса
-    net_bytes_recv REAL,        -- входящий трафик, байт/сек
-    net_bytes_sent REAL,        -- исходящий трафик, байт/сек
-
-    -- Процессы
-    processes_json TEXT         -- JSON-массив топ-10 процессов
-);
-```
-
-Данные накапливаются бесконечно (удаления нет). Запросы истории делают `ORDER BY timestamp DESC LIMIT 20`, что эффективно при наличии индекса. На большом объёме данных потребуется периодическая очистка или партиционирование.
-
----
-
-## 6. Фронтенд (React)
-
-Стек: **React 18**, **Vite**, **Tailwind CSS v3**, **Recharts** (графики), **React Router v6**, **Lucide React** (иконки).
-
-### 6.1 Точка входа и роутинг
-
-**`src/main.jsx`** — монтирует `<App />` в `#root`.
-
-**`src/App.jsx`** — корневой компонент:
-- Оборачивает всё в `<BrowserRouter>`
-- Управляет состоянием сайдбара (`isSidebarOpen`)
-- Рендерит `<Sidebar>` и `<Header>` вне маршрутов (они всегда видны)
-- Определяет два маршрута:
-  - `/` → `<Dashboard />`
-  - `/node/:nodeId` → `<NodeDetail />` (`:nodeId` = hostname узла)
-- На мобилках при открытом сайдбаре показывает полупрозрачный overlay, клик по которому закрывает меню
-
-### 6.2 Слой работы с API
-
-**`src/lib/api.js`** — единственный файл, который знает об URL-адресах:
-
-```js
-const API_BASE = '/api';
-
-fetchNodes()       // GET /api/nodes → массив NodeSummary
-fetchNodeDetail(nodeId) // GET /api/nodes/:nodeId → один NodeSummary (пока не реализован на бэке)
-```
-
-Все запросы идут на относительный путь `/api/...`. В dev-режиме Vite проксирует их на `http://localhost:8080`, в production Nginx проксирует на `127.0.0.1:8080`.
-
-### 6.3 Хуки (hooks)
-
-#### `useAutoRefresh.js` — базовый хук polling
-
-```
-fetchFn: функция, возвращающая Promise
-intervalMs: интервал опроса (по умолчанию 5000 мс)
-→ возвращает { data, loading, error }
-```
-
-Реализован через рекурсивный `setTimeout` (не `setInterval`), что гарантирует: следующий запрос начнётся только после завершения предыдущего. Это предотвращает накопление параллельных запросов при медленной сети.
-
-При размонтировании компонента флаг `isMounted` предотвращает обновление стейта после уничтожения компонента.
-
-#### `useNodes.js`
-
-```js
-export function useNodes() {
-  return useAutoRefresh(fetchNodes, 5000);
-}
-```
-
-Простая обёртка. Используется в `Dashboard` и `NodeDetail`.
-
-#### `useNodeDetail.js`
-
-Аналогичная обёртка для `fetchNodeDetail`. Пока фактически не используется — `NodeDetail` использует `useNodes()` и ищет нужный узел через `nodes.find(n => n.name === nodeId)`.
-
-### 6.4 Страницы (pages)
-
-#### `Dashboard.jsx`
-
-Получает данные через `useNodes()`. Вычисляет агрегированные значения на стороне клиента:
-
-- `online` / `offline` — фильтрация по `node.online`
-- `avgCPU` — среднее `node.cpu` по онлайн-узлам
-- `avgRAM` — среднее `(ramUsed/ramTotal)*100` по онлайн-узлам
-- `avgDisk` — среднее `node.diskUsage` по онлайн-узлам
-
-Рендерит:
-1. **5 сводных карточек** (`StatCard`) — узлы онлайн/оффлайн, CPU/RAM/Disk средние
-2. **Сетку карточек узлов** — `<NodeCard>` для каждого элемента массива
-
-Цвета карточек динамически меняются: зелёный (<60%) → жёлтый (60–80%) → красный (>80%).
-
-#### `NodeDetail.jsx`
-
-Получает данные через `useNodes()`, находит нужный узел: `nodes.find(n => n.name === nodeId)`. Где `nodeId` — параметр маршрута из URL (`/node/HOSTNAME`).
-
-Определяет тип ОС: `isWindows = node.os?.toLowerCase().includes('windows')`.
-
-Рендерит секции (в сетке `xl:grid-cols-3`):
-1. **Хлебные крошки + заголовок** — имя, статус online/offline, OS, IP, uptime
-2. **4 быстрых показателя** — CPU%, RAM%, Disk%, скорость сети
-3. **CPU** (2 колонки) — `CpuGauge` + детализация user/system/load avg + `CpuHistory`
-4. **RAM** (1 колонка) — `ProgressBar` + детализация + Swap
-5. **Сеть** (2 колонки) — текущие RX/TX скорости + `NetworkLines`
-6. **Диски** (1 колонка) — `DiskBars`
-7. **Топ процессов** (2 колонки) — таблица с мини-барами CPU
-8. **Сервисы** (1 колонка) — `ServiceBadge` для RDP+SMB (Windows) или SSH (Linux) + системная информация
-
-Load average показывается только для не-Windows: `{!isWindows && (...)}`.
-
-### 6.5 Компоненты (components)
-
-#### `cards/NodeCard.jsx`
-
-Карточка узла в сетке Dashboard. Содержит:
-- Цветной индикатор статуса, имя, OS, IP
-- CPU%, RAM% с цветовой индикацией
-- Disk%, uptime
-- `<Sparkline>` — мини-график истории CPU
-- Бейджи RDP/SMB (только Windows)
-- Клик на карточку → `Link` на `/node/:name`
-
-#### `charts/CpuGauge.jsx`
-
-Круговой SVG-индикатор (0–100%). Цвет дуги меняется по порогам.
-
-#### `charts/CpuHistory.jsx`
-
-`AreaChart` из Recharts. Принимает массив `[{time, cpu}]`. Ось X — временные метки вида `-60с`, `-57с`... `0с`. Градиентная заливка под кривой.
-
-#### `charts/NetworkLines.jsx`
-
-`LineChart` из Recharts. Принимает `[{time, recv, sent}]`. Две линии: входящий (cyan) и исходящий (blue) трафик.
-
-#### `charts/DiskBars.jsx`
-
-Принимает массив дисков `[{mount, used, total, unit}]`. Отрисовывает горизонтальные бары. `unit: '%'` — значение уже в процентах; `unit: 'GB'` — рассчитывает `used/total*100`.
-
-#### `charts/Sparkline.jsx`
-
-Миниатюрный `LineChart` без осей и подписей. Используется внутри `NodeCard` для компактного отображения истории.
-
-#### `common/ProgressBar.jsx`
-
-Горизонтальная полоса. Цвет: зелёный (0–60), жёлтый (60–85), красный (>85).
-
-#### `layout/Sidebar.jsx`
-
-Левая навигационная панель. Содержит ссылку на Dashboard и динамический список узлов (получает через `useNodes()`). Каждый узел — ссылка на `/node/:name` с цветным индикатором статуса. На мобилках скрывается (абсолютное позиционирование + z-index).
-
-#### `layout/Header.jsx`
-
-Верхняя панель. Кнопка-гамбургер для переключения сайдбара, название системы, индикатор последнего обновления.
-
----
-
-## 7. Как фронтенд взаимодействует с бэкендом
-
-### В режиме разработки (Vite)
-
-```
-Браузер → http://localhost:5173/api/nodes
-         ↓ (Vite proxy, vite.config.js)
-Go-сервер → http://localhost:8080/api/nodes
-```
-
-Конфигурация прокси в `vite.config.js`:
-```js
-server: {
-  proxy: {
-    '/api': {
-      target: 'http://localhost:8080',
-      changeOrigin: true,
-    }
-  }
-}
-```
-
-Это позволяет фронтенду и бэкенду работать на разных портах без CORS-проблем.
-
-### В production (Nginx)
-
-```
-Браузер → http://10.10.10.10/api/nodes
-         ↓ (Nginx proxy_pass)
-Go-сервер → http://127.0.0.1:8080/api/nodes
-
-Браузер → http://10.10.10.10/
-         ↓ (Nginx static files)
-/opt/linkmus-monitor/web/dist/index.html
-```
-
-### Формат данных
-
-Фронтенд получает **массив** `NodeSummary[]` от `GET /api/nodes`. Оба компонента (`Dashboard` и `NodeDetail`) используют один и тот же хук `useNodes()` и работают с одним запросом. `NodeDetail` просто фильтрует нужный узел из массива по имени.
-
-Автоматическое обновление происходит каждые **5 секунд** (интервал в `useNodes.js`), агент отправляет данные каждые **3 секунды** (интервал в `agent-config.yaml`). Таким образом, данные на экране обновляются не позже чем через 8 секунд после изменения на узле.
-
----
-
-## 8. Полный путь данных: от агента до браузера
-
-```
-[Узел (Windows/Linux)]
-  │
-  │  1. Каждые 3 сек: collectAndSend()
-  │     - cpu_windows.go: δ(cpu_times) → user%, system%, total%
-  │     - memory_windows.go: VirtualMemory() → used/total ГБ
-  │     - disk_windows.go: Usage("C:\\") → %
-  │     - network_windows.go: δ(IOCounters) / dt → байт/сек
-  │     - process_windows.go: top-10 по CPU → JSON-строка
-  │     - services_windows.go: WMI Win32_Service → rdp/smb bool
-  │
-  │  2. sender.go: JSON.Marshal(MetricPayload) → HTTP POST /api/metrics
-  │
-  ▼
-[mon-server :8080]
-  │
-  │  3. handleMetrics(): json.Decode(r.Body) → MetricPayload
-  │
-  │  4. SaveMetric(): INSERT INTO metrics (...) VALUES (...)
-  │     Каждый вызов агента = 1 новая строка в SQLite
-  │
-  │  5. GET /api/nodes (каждые 5 сек от браузера)
-  │     GetLatestNodes():
-  │     - SELECT DISTINCT node_name → список узлов
-  │     - Для каждого:
-  │       - SELECT ... LIMIT 1 ORDER BY timestamp DESC → последняя метрика
-  │       - SELECT cpu_usage ... LIMIT 20 → 20 точек истории (разворот)
-  │       - SELECT ram_usage, ram_total ... LIMIT 20 → история RAM %
-  │       - SELECT net_bytes_recv, net_bytes_sent ... LIMIT 20 → история сети
-  │       - json.Unmarshal(processes_json) → []ProcessInfo
-  │     - Собирает NodeSummary для каждого узла
-  │
-  │  6. json.NewEncoder(w).Encode(nodes) → JSON-ответ
-  │
-  ▼
-[Браузер]
-  │
-  │  7. useAutoRefresh → fetch('/api/nodes') → NodeSummary[]
-  │
-  │  8. Dashboard: nodes.map(n => <NodeCard node={n} />)
-  │     NodeDetail: nodes.find(n => n.name === nodeId)
-  │
-  │  9. Recharts рендерит cpuHistory, ramHistory, netHistory
-  │     CpuGauge рендерит текущую загрузку
-  │     ProgressBar рендерит RAM, Disk
-  │
-  ▼
-[Экран пользователя — живые данные]
-```
-
----
-
-## 9. API-контракт
-
-### `POST /api/metrics`
-
-Агент → Сервер. Тело запроса — JSON:
-
-```json
-{
-  "node_name": "DESKTOP-ABC",
-  "os": "windows Windows 10 Pro",
-  "ip": "10.10.10.101",
-  "uptime": "36 ч.",
-  "timestamp": "2026-04-15T14:30:00Z",
-  "cpu_usage": 42.5,
-  "cpu_user": 30.1,
-  "cpu_system": 12.4,
-  "load_avg_1": 0,
-  "load_avg_5": 0,
-  "load_avg_15": 0,
-  "ram_usage": 2.7,
-  "ram_total": 4.0,
-  "ram_cached": 0.5,
-  "ram_buffers": 0.1,
-  "swap_used": 0.2,
-  "swap_total": 2.0,
-  "disk_usage": 52.3,
-  "rdp_running": true,
-  "smb_running": true,
-  "net_interface": "Ethernet",
-  "net_bytes_recv": 12345.6,
-  "net_bytes_sent": 6789.0,
-  "processes_json": "[{\"pid\":4,\"name\":\"System\",\"cpu\":0.5,\"ram\":0.1,\"user\":\"SYSTEM\"}]"
-}
-```
-
-Ответ: `200 OK` (пустое тело).
-
-### `GET /api/nodes`
-
-Сервер → Фронтенд. Ответ — JSON-массив:
-
-```json
-[
-  {
-    "name": "DESKTOP-ABC",
-    "os": "windows Windows 10 Pro",
-    "ip": "10.10.10.101",
-    "online": true,
-    "cpu": 42,
-    "cpuUser": 30.1,
-    "cpuSystem": 12.4,
-    "loadAvg1": 0, "loadAvg5": 0, "loadAvg15": 0,
-    "ramUsed": 2.7,
-    "ramTotal": 4.0,
-    "ramCached": 0.5,
-    "ramBuffers": 0.1,
-    "swapUsed": 0.2,
-    "swapTotal": 2.0,
-    "diskUsage": 52.3,
-    "rdpRunning": true,
-    "smbRunning": true,
-    "uptime": "36 ч.",
-    "ping": 1,
-    "netInterface": "Ethernet",
-    "netRecvSec": 12345.6,
-    "netSentSec": 6789.0,
-    "cpuHistory": [{"value": 40}, {"value": 41}, {"value": 42}],
-    "ramHistory": [{"value": 65}, {"value": 66}, {"value": 67}],
-    "netHistory": [{"recv": 11000, "sent": 6000}, {"recv": 12345, "sent": 6789}],
-    "processes": [
-      {"pid": 4, "name": "System", "cpu": 0.5, "ram": 0.1, "user": "SYSTEM"}
-    ]
-  }
-]
-```
-
-Примечания:
-- `cpu` — int (округлено от float64)
-- `ramUsed`, `ramTotal` — float64, ГБ
-- `diskUsage` — float64, % (не ГБ!)
-- `netRecvSec`, `netSentSec` — байт/сек
-- `cpuHistory` — от старых к новым, последние 20 точек
-- `online` — всегда `true` (логика offline пока не реализована)
-- `ping` — всегда `1` (заглушка)
-
----
-
-## 10. Конфигурация
-
-### `configs/agent-config.yaml`
-
-```yaml
-server:
-  url: "http://127.0.0.1:8080/api/metrics"
-  interval: 3s
-```
-
-На продакшн-узлах `url` меняется на `http://10.10.10.10:8080/api/metrics` (или через Nginx — `http://10.10.10.10/api/metrics`).
-
-### Переменные окружения
-
-Нет. Конфигурация только через YAML-файл.
-
-### Путь к конфигу
-
-Агент ищет конфиг по относительному пути `configs/agent-config.yaml` от рабочей директории. При запуске через systemd/NSSM нужно либо задать `WorkingDirectory`, либо передать путь аргументом.
-
----
-
-## 11. Сборка и запуск
-
-### Зависимости
+### Требования
 
 - Go 1.21+
-- Node.js 18+ / npm
+- Node.js 18+, npm
 
-### Агент
-
-```bash
-# Windows (из корня проекта)
-GOOS=windows GOARCH=amd64 go build -o mon-agent.exe ./cmd/agent/
-
-# Linux
-GOOS=linux GOARCH=amd64 go build -o mon-agent-linux ./cmd/agent/
-```
-
-Скопировать на целевой узел вместе с `configs/agent-config.yaml`.
-
-### Сервер
+### 1. Клонировать репозиторий
 
 ```bash
-go build -o mon-server ./cmd/server/
-./mon-server
-# Слушает :8080, создаёт monitor.db в текущей директории
+git clone <url> linkmus-monitor
+cd linkmus-monitor
 ```
 
-### Фронтенд (разработка)
+### 2. Запустить сервер
+
+```bash
+go run ./cmd/server/
+# ✅ Сервер запущен на :8080
+# ✅ monitor.db создан автоматически
+```
+
+### 3. Запустить агент (на той же или другой машине)
+
+```bash
+# Убедитесь что в configs/agent-config.yaml указан правильный URL
+go run ./cmd/agent/
+# 💾 [HOSTNAME] CPU:5.2% | RAM:3.1/7.8GB | Disk:45.2% ...
+```
+
+### 4. Запустить фронтенд
 
 ```bash
 cd web
 npm install
 npm run dev
-# Vite dev-server: http://localhost:5173
-# /api/* проксируется на http://localhost:8080
+# Открыть http://localhost:5173
 ```
 
-### Фронтенд (production)
+### Полный цикл (три терминала)
 
 ```bash
-cd web
-npm run build
-# Статика в web/dist/ — раздаётся через Nginx
-```
-
-### Быстрый старт для разработки
-
-```bash
-# Терминал 1: сервер
+# Терминал 1
 go run ./cmd/server/
 
-# Терминал 2: агент (собирает метрики с текущей машины)
+# Терминал 2
 go run ./cmd/agent/
 
-# Терминал 3: фронтенд
+# Терминал 3
 cd web && npm run dev
-# Открыть http://localhost:5173
+```
+
+### Конфигурация агента (`configs/agent-config.yaml`)
+
+```yaml
+server:
+  url: "http://127.0.0.1:8080/api/metrics"  # адрес мастер-сервера
+  interval: 3s                               # интервал отправки
 ```
 
 ---
 
-## 12. Деплой на боевые узлы
+## 📦 Сборка и деплой
 
-### Мастер-сервер (srv-mon-01, Astra Linux)
+### Кросс-компиляция агента
 
 ```bash
-# 1. Собрать бинарник сервера под Linux
-GOOS=linux GOARCH=amd64 go build -o mon-server ./cmd/server/
+# Linux (для Astra, Ubuntu, РЕД ОС)
+GOOS=linux GOARCH=amd64 go build -o mon-agent-linux ./cmd/agent/
 
-# 2. Скопировать на сервер
-scp mon-server user@10.10.10.10:/opt/linkmus-monitor/
-
-# 3. Собрать фронтенд и скопировать
-cd web && npm run build
-scp -r dist/ user@10.10.10.10:/opt/linkmus-monitor/web/
-
-# 4. Запустить сервер (фоново или через systemd)
-./mon-server
+# Windows
+GOOS=windows GOARCH=amd64 go build -o mon-agent.exe ./cmd/agent/
 ```
 
-#### Systemd unit для сервера (`/etc/systemd/system/mon-server.service`)
+### Сборка сервера
 
-```ini
+```bash
+GOOS=linux GOARCH=amd64 go build -o mon-server ./cmd/server/
+```
+
+### Сборка фронтенда
+
+```bash
+cd web && npm run build
+# Статика в web/dist/
+```
+
+---
+
+### Деплой мастер-сервера на `srv-mon-01` (Astra Linux)
+
+```bash
+# Скопировать бинарник и статику
+scp mon-server user@10.10.10.10:/opt/linkmus-monitor/
+scp -r web/dist user@10.10.10.10:/opt/linkmus-monitor/web/
+
+# Systemd unit
+sudo tee /etc/systemd/system/mon-server.service << 'EOF'
 [Unit]
 Description=LinkMus Monitor Server
 After=network-online.target
@@ -858,33 +405,28 @@ User=root
 
 [Install]
 WantedBy=multi-user.target
+EOF
+
+sudo systemctl daemon-reload
+sudo systemctl enable --now mon-server
 ```
 
-```bash
-systemctl daemon-reload
-systemctl enable --now mon-server
-systemctl status mon-server
-```
-
-#### Nginx (`/etc/nginx/sites-available/linkmus`)
+### Nginx (`/etc/nginx/sites-available/linkmus`)
 
 ```nginx
 server {
     listen 80;
     server_name _;
 
-    # Статика React (собранный dist/)
     root /opt/linkmus-monitor/web/dist;
     index index.html;
 
-    # API проксируется на Go-сервер
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header Host $host;
     }
 
-    # SPA: все маршруты отдают index.html
     location / {
         try_files $uri $uri/ /index.html;
     }
@@ -892,26 +434,25 @@ server {
 ```
 
 ```bash
-ln -s /etc/nginx/sites-available/linkmus /etc/nginx/sites-enabled/
-nginx -t && systemctl reload nginx
+sudo ln -s /etc/nginx/sites-available/linkmus /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
 ```
 
 ---
 
-### Агент на Linux-узлах (Astra / Ubuntu / РЕД ОС)
+### Деплой агента на Linux-узлах
 
 ```bash
-# 1. Скопировать бинарник и конфиг
+# Скопировать бинарник и конфиг
 scp mon-agent-linux user@10.10.10.100:/opt/mon-agent/mon-agent
 scp configs/agent-config.yaml user@10.10.10.100:/opt/mon-agent/configs/
+chmod +x /opt/mon-agent/mon-agent
 
-# 2. Поправить URL сервера в конфиге
+# Поправить URL в конфиге на целевом узле:
 # url: "http://10.10.10.10/api/metrics"
-```
 
-#### Systemd unit для агента (`/etc/systemd/system/mon-agent.service`)
-
-```ini
+# Systemd unit
+sudo tee /etc/systemd/system/mon-agent.service << 'EOF'
 [Unit]
 Description=LinkMus Monitor Agent
 After=network-online.target
@@ -926,118 +467,323 @@ User=root
 
 [Install]
 WantedBy=multi-user.target
-```
+EOF
 
-```bash
-systemctl daemon-reload
-systemctl enable --now mon-agent
-journalctl -u mon-agent -f   # следить за логом агента
+sudo systemctl daemon-reload
+sudo systemctl enable --now mon-agent
+sudo journalctl -u mon-agent -f
 ```
 
 ---
 
-### Агент на Windows-узлах (cl-win-01, srv-corp-01)
+### Деплой агента на Windows-узлах (через NSSM)
 
 ```powershell
-# 1. Скопировать mon-agent.exe и configs/ в C:\mon-agent\
+# Скопировать mon-agent.exe и configs/ в C:\mon-agent\
+# Поправить url в configs\agent-config.yaml
 
-# 2. Установить как службу через NSSM (Non-Sucking Service Manager)
+# Установить как системную службу
 nssm install MonAgent "C:\mon-agent\mon-agent.exe"
 nssm set MonAgent AppDirectory "C:\mon-agent"
+nssm set MonAgent AppStdout "C:\mon-agent\logs\agent.log"
+nssm set MonAgent AppStderr "C:\mon-agent\logs\agent-err.log"
 nssm set MonAgent Start SERVICE_AUTO_START
 nssm start MonAgent
 
-# Проверить статус
+# Проверить
 nssm status MonAgent
-
-# Посмотреть лог (NSSM пишет stdout в файл)
-nssm set MonAgent AppStdout "C:\mon-agent\logs\agent.log"
-nssm set MonAgent AppStderr "C:\mon-agent\logs\agent-err.log"
-```
-
-Поправить `C:\mon-agent\configs\agent-config.yaml`:
-```yaml
-server:
-  url: "http://10.10.10.10/api/metrics"
-  interval: 3s
 ```
 
 ---
 
-## 13. Go-зависимости
+## 🔌 API-контракт
 
-Файл `go.mod` объявляет единый модуль `linkmus-monitor`. Все зависимости — pure-Go или с минимальными требованиями к системе.
+### `POST /api/metrics` — агент → сервер
 
-| Пакет | Версия | Назначение | Используется в |
-|-------|--------|-----------|----------------|
-| `github.com/shirou/gopsutil/v3` | v3.x | CPU, RAM, диск, сеть, процессы, хост-инфо | `internal/collector/*`, `internal/agent/agent.go` |
-| `github.com/yusufpapurcu/wmi` | v1.x | WMI-запросы к Win32_Service на Windows | `internal/collector/services_windows.go` |
-| `github.com/go-ole/go-ole` | v1.x | COM-инициализация (транзитивная зависимость wmi) | — |
-| `gopkg.in/yaml.v3` | v3.x | Парсинг `agent-config.yaml` | `internal/agent/config.go` |
-| `modernc.org/sqlite` | v1.x | Pure-Go SQLite без CGo | `internal/server/storage.go` |
+Тело запроса (JSON):
 
-#### Почему `modernc.org/sqlite`, а не `mattn/go-sqlite3`?
+```json
+{
+  "node_name": "srv-corp-01",
+  "os": "windows Windows Server 2022",
+  "ip": "10.10.10.11",
+  "uptime": "72 ч.",
+  "boot_time": "13.04.2026 10:00",
+  "timestamp": "2026-04-16T14:30:00Z",
+  "logged_users": 2,
 
-`mattn/go-sqlite3` требует CGo и установленного `gcc` для компиляции. Это делает кросс-компиляцию под Linux с Windows крайне неудобной. `modernc.org/sqlite` — транспилированная в Go версия оригинального SQLite C-кода, работает без CGo, компилируется под любую платформу стандартным `go build`.
+  "cpu_usage": 42.5,
+  "cpu_user": 30.1,
+  "cpu_system": 12.4,
+  "cpu_model": "Intel(R) Xeon(R) CPU E5-2670",
+  "cpu_freq_mhz": 2600.0,
+  "cpu_cores_json": "[15.2, 42.5, 8.1, 60.3]",
+  "load_avg_1": 0, "load_avg_5": 0, "load_avg_15": 0,
+
+  "ram_usage": 2.7,
+  "ram_total": 4.0,
+  "ram_cached": 0.5,
+  "ram_buffers": 0.1,
+  "swap_used": 0.2,
+  "swap_total": 2.0,
+
+  "disk_usage": 52.3,
+  "disk_read_sec": 1048576.0,
+  "disk_write_sec": 524288.0,
+  "disks_json": "[{\"mount\":\"C:\\\\\",\"fstype\":\"NTFS\",\"totalGB\":50,\"usedGB\":26.2,\"usedPercent\":52.3}]",
+
+  "rdp_running": true,
+  "smb_running": true,
+
+  "net_interface": "Ethernet",
+  "net_bytes_recv": 125000.0,
+  "net_bytes_sent": 48000.0,
+  "all_ifaces_json": "[{\"name\":\"Ethernet\",\"bytesRecvSec\":125000,\"bytesSentSec\":48000}]",
+
+  "process_count": 128,
+  "processes_json": "[{\"pid\":4,\"name\":\"System\",\"cpu\":0.5,\"ram\":0.1,\"user\":\"SYSTEM\"}]",
+  "top_mem_json": "[{\"pid\":1234,\"name\":\"sqlservr.exe\",\"cpu\":2.1,\"ram\":512.4,\"user\":\"MSSQLSERVER\"}]"
+}
+```
+
+Ответ: `200 OK`
 
 ---
 
-## 14. Пороги алертов
+### `GET /api/nodes` — сервер → фронтенд
 
-Система готовится к реализации алертинга. Запланированные пороги:
+Ответ — JSON-массив `NodeSummary[]`:
 
-| Метрика | Warning | Critical | Примечание |
-|---------|---------|----------|-----------|
-| `cpu_percent` | > 80% в течение 5 мин | > 95% в течение 3 мин | Скользящее окно |
-| `mem_usage_percent` | > 85% | > 95% | |
-| `disk_usage_percent` | > 80% | > 90% | Для каждого раздела |
-| `swap_usage_percent` | > 50% | > 80% | |
-| `node_offline` | — | `last_seen > 60 сек` | Узел не отвечает |
-| `service_down` | — | `reachable = false` дважды подряд | RDP, SMB, SSH |
-| `fsrm_quota` | > 80% использования | > 95% или жёсткий лимит | Только srv-corp-01 |
-| `disk_iowait` | > 30% | > 60% | Только Linux |
-| `load_avg_1m` | > `cpu_count × 2` | > `cpu_count × 4` | Только Linux |
+```json
+[
+  {
+    "name": "srv-corp-01",
+    "os": "windows Windows Server 2022",
+    "ip": "10.10.10.11",
+    "online": true,
+    "lastSeen": "16.04 14:30:05",
+    "uptime": "72 ч.",
+    "bootTime": "13.04.2026 10:00",
+    "ping": 1,
 
-Цветовая индикация уже реализована в UI:
-- **Зелёный** (`text-emerald-400`) — норма (< 60%)
-- **Жёлтый** (`text-amber-400`) — внимание (60–85%)
-- **Красный** (`text-red-400`) — критично (> 85%)
+    "cpu": 42,
+    "cpuUser": 30.1,
+    "cpuSystem": 12.4,
+    "cpuModel": "Intel(R) Xeon(R) CPU E5-2670",
+    "cpuFreqMHz": 2600.0,
+    "cpuCores": [15.2, 42.5, 8.1, 60.3],
+    "loadAvg1": 0, "loadAvg5": 0, "loadAvg15": 0,
+
+    "ramUsed": 2.7,
+    "ramTotal": 4.0,
+    "ramCached": 0.5,
+    "ramBuffers": 0.1,
+    "swapUsed": 0.2,
+    "swapTotal": 2.0,
+
+    "diskUsage": 52.3,
+    "diskReadSec": 1048576.0,
+    "diskWriteSec": 524288.0,
+    "disks": [
+      {"mount": "C:\\", "fstype": "NTFS", "totalGB": 50, "usedGB": 26.2, "usedPercent": 52.3}
+    ],
+
+    "rdpRunning": true,
+    "smbRunning": true,
+
+    "netInterface": "Ethernet",
+    "netRecvSec": 125000.0,
+    "netSentSec": 48000.0,
+    "allIfaces": [
+      {"name": "Ethernet", "bytesRecvSec": 125000, "bytesSentSec": 48000}
+    ],
+
+    "processCount": 128,
+    "loggedUsers": 2,
+    "processes": [
+      {"pid": 4, "name": "System", "cpu": 0.5, "ram": 0.1, "user": "SYSTEM"}
+    ],
+    "topMemProcesses": [
+      {"pid": 1234, "name": "sqlservr.exe", "cpu": 2.1, "ram": 512.4, "user": "MSSQLSERVER"}
+    ],
+
+    "cpuHistory": [
+      {"value": 40, "time": "14:29:45"},
+      {"value": 42, "time": "14:29:48"},
+      {"value": 42, "time": "14:29:51"}
+    ],
+    "ramHistory": [
+      {"value": 67, "time": "14:29:45"}
+    ],
+    "netHistory": [
+      {"recv": 120000, "sent": 45000, "time": "14:29:45"}
+    ]
+  }
+]
+```
+
+**Важные примечания:**
+- `online: true` — если последняя метрика поступила менее 30 секунд назад
+- `lastSeen` — абсолютное время последней метрики (формат `ДД.ММ ЧЧ:ММ:СС`)
+- `cpu` — int (округлено), `ramUsed`/`ramTotal` — float64 (ГБ), `diskUsage` — float64 (%)
+- `cpuHistory`, `ramHistory`, `netHistory` — последние 20 точек в хронологическом порядке (от старых к новым), с абсолютным временем на оси X
 
 ---
 
-## 15. Правило добавления новой метрики
+## 🗄️ Схема базы данных
 
-При добавлении любой новой метрики необходимо последовательно обновить **все** перечисленные места. Пропуск любого шага приведёт к тому, что данные будут собираться, но не отображаться (или наоборот).
+Единственная таблица `metrics` — накопительный лог всех телеметрических данных.
+
+```sql
+CREATE TABLE metrics (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+
+    -- Идентификация узла
+    node_name       TEXT,          -- hostname
+    os              TEXT,          -- "windows Windows Server 2022"
+    ip              TEXT,          -- "10.10.10.11"
+    uptime          TEXT,          -- "72 ч."
+    boot_time       TEXT,          -- "13.04.2026 10:00"
+    timestamp       DATETIME,      -- RFC3339, от агента
+    logged_users    INTEGER,
+
+    -- CPU
+    cpu_usage       REAL,          -- суммарная загрузка, %
+    cpu_user        REAL,          -- user-пространство, %
+    cpu_system      REAL,          -- system (kernel), %
+    cpu_model       TEXT,          -- "Intel(R) Xeon(R)..."
+    cpu_freq_mhz    REAL,          -- текущая частота
+    cpu_cores_json  TEXT,          -- JSON []float64 — по ядрам
+
+    -- Load average
+    load_avg_1      REAL,
+    load_avg_5      REAL,
+    load_avg_15     REAL,
+
+    -- RAM
+    ram_usage       REAL,          -- используется, ГБ
+    ram_total       REAL,          -- всего, ГБ
+    ram_cached      REAL,          -- кэш, ГБ
+    ram_buffers     REAL,          -- буферы, ГБ
+    swap_used       REAL,          -- swap используется, ГБ
+    swap_total      REAL,          -- swap всего, ГБ
+
+    -- Диск
+    disk_usage      REAL,          -- корневой раздел, %
+    disk_read_sec   REAL,          -- чтение, байт/сек
+    disk_write_sec  REAL,          -- запись, байт/сек
+    disks_json      TEXT,          -- JSON []DiskInfo — все разделы
+
+    -- Службы Windows
+    rdp_running     BOOLEAN,
+    smb_running     BOOLEAN,
+
+    -- Сеть
+    net_interface   TEXT,          -- имя основного интерфейса
+    net_bytes_recv  REAL,          -- входящий, байт/сек
+    net_bytes_sent  REAL,          -- исходящий, байт/сек
+    all_ifaces_json TEXT,          -- JSON []NetIfaceInfo — все интерфейсы
+
+    -- Процессы
+    process_count   INTEGER,       -- общее количество
+    processes_json  TEXT,          -- JSON топ-10 по CPU
+    top_mem_json    TEXT           -- JSON топ-10 по RAM
+);
+```
+
+**Миграция** реализована через `MigrateDB()` — функция выполняет `ALTER TABLE ... ADD COLUMN` для каждой новой колонки. Ошибки игнорируются (если колонка уже существует). Это позволяет безопасно обновлять схему на работающей системе без пересоздания таблицы и потери данных.
+
+**Хранение истории:** каждый вызов агента = одна строка. Запросы истории для графиков: `ORDER BY timestamp DESC LIMIT 20` с последующим разворотом массива (хронологический порядок). Очистка старых данных не реализована — для учебного стенда объём данных незначителен.
+
+---
+
+## ➕ Добавление новой метрики
+
+При добавлении любой новой метрики нужно последовательно обновить **5 слоёв** системы:
 
 ```
-Шаг 1. Агент — структура данных
-        internal/agent/agent.go       → добавить поле в MetricPayload
-        internal/server/server.go     → добавить то же поле в MetricPayload (зеркальная структура)
+1. КОЛЛЕКТОР (сбор)
+   internal/collector/*_windows.go  — добавить функцию или расширить существующую
+   internal/collector/*_linux.go    — аналогично для Linux
 
-Шаг 2. Агент — сбор
-        internal/collector/*_windows.go  → реализовать сбор для Windows
-        internal/collector/*_linux.go    → реализовать сбор для Linux (когда появится)
-        internal/agent/agent.go          → вызвать коллектор, заполнить поле в payload
+2. АГЕНТ (упаковка)
+   internal/agent/agent.go          — добавить поле в MetricPayload, вызвать коллектор
 
-Шаг 3. Сервер — хранение
-        internal/server/storage.go    → добавить колонку в CREATE TABLE или MigrateDB()
-        internal/server/storage.go    → добавить поле в INSERT (SaveMetric)
-        internal/server/storage.go    → добавить поле в SELECT (GetLatestNodes)
+3. СЕРВЕР (приём + хранение)
+   internal/server/server.go        — добавить то же поле в MetricPayload (зеркально)
+   internal/server/storage.go       — MigrateDB(): ALTER TABLE ADD COLUMN
+   internal/server/storage.go       — SaveMetric(): добавить в INSERT
+   internal/server/storage.go       — GetLatestNodes(): добавить в SELECT + Scan
 
-Шаг 4. Сервер — API
-        internal/server/api.go        → добавить поле в NodeSummary
-        internal/server/storage.go    → заполнить поле при сборке NodeSummary
+4. API (отдача на фронт)
+   internal/server/api.go           — добавить поле в NodeSummary
+   internal/server/storage.go       — заполнить поле при сборке NodeSummary
 
-Шаг 5. Фронтенд — отображение
-        web/src/pages/NodeDetail.jsx  → отобразить новое поле (секция / компонент)
-        web/src/pages/Dashboard.jsx   → если метрика нужна в сводке Dashboard
-        web/src/components/cards/NodeCard.jsx → если нужна на карточке узла
+5. ФРОНТЕНД (отображение)
+   web/src/pages/NodeDetail.jsx     — добавить отображение в нужную секцию
+   web/src/pages/Dashboard.jsx      — если метрика нужна в сводке
+   web/src/components/cards/NodeCard.jsx — если нужна на карточке
 ```
 
-**Пример:** добавление `cpu_temperature_celsius`
+**Пример — добавление температуры CPU:**
 
-1. `MetricPayload.CPUTemp float64 json:"cpu_temp"` — в обоих файлах
-2. `collector/temp_linux.go` — читать `/sys/class/thermal/thermal_zone0/temp`
-3. `ALTER TABLE metrics ADD COLUMN cpu_temp REAL DEFAULT 0` — в MigrateDB
-4. `NodeSummary.CPUTemp float64 json:"cpuTemp"` — в api.go
-5. Отображение в `NodeDetail.jsx` в блоке CPU: `<InfoRow label="Температура" value={...} />`
+```go
+// 1. collector/temp_linux.go
+func CollectCPUTemp() float64 {
+    data, err := os.ReadFile("/sys/class/thermal/thermal_zone0/temp")
+    if err != nil { return 0 }
+    t, _ := strconv.ParseFloat(strings.TrimSpace(string(data)), 64)
+    return t / 1000
+}
+
+// 2. agent.go — MetricPayload + collectAndSend()
+CPUTemp float64 `json:"cpu_temp"`
+// payload.CPUTemp = collector.CollectCPUTemp()
+
+// 3. storage.go — MigrateDB
+`ALTER TABLE metrics ADD COLUMN cpu_temp REAL DEFAULT 0`
+
+// 4. api.go — NodeSummary
+CPUTemp float64 `json:"cpuTemp"`
+
+// 5. NodeDetail.jsx
+<InfoRow label="Температура CPU" value={node.cpuTemp > 0 ? `${node.cpuTemp.toFixed(1)} °C` : 'N/A'} />
+```
+
+---
+
+## 🚨 Пороги алертов
+
+Цветовая индикация реализована в UI. Алертинг (уведомления) — в планах.
+
+| Метрика | 🟡 Внимание | 🔴 Критично |
+|---------|------------|------------|
+| CPU | > 60% | > 85% |
+| RAM | > 60% | > 85% |
+| Disk (раздел) | > 60% | > 85% |
+| Swap | > 50% | > 80% |
+| Узел недоступен | — | last_seen > 30 сек |
+| Служба (RDP/SMB) | — | `running = false` |
+| Load avg (Linux) | > cpu_count × 2 | > cpu_count × 4 |
+| Disk I/O (ожидание) | > 30% | > 60% |
+
+Цветовая схема во всём интерфейсе:
+- `text-emerald-400` — норма (< 60%)
+- `text-amber-400` — внимание (60–85%)
+- `text-red-400` — критично (> 85%)
+
+---
+
+## 👤 Авторство
+
+| Параметр | Значение |
+|----------|---------|
+| **Учебное заведение** | МАДИ (Московский автомобильно-дорожный государственный технический университет) |
+| **Дисциплина** | Телекоммуникационные технологии в отраслях транспортно-дорожного комплекса |
+| **Группа** | 2бИТС1 |
+| **Тип работы** | Курсовая работа |
+| **Год** | 2026 |
+
+---
+
+*LinkMus Monitor — учебный проект. Не предназначен для использования в production без доработки безопасности (аутентификация, HTTPS, ротация логов БД).*

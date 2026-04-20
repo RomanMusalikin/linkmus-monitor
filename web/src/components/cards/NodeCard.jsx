@@ -1,6 +1,8 @@
-import { Link } from 'react-router-dom';
-import { Monitor, Terminal } from 'lucide-react';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Monitor, Terminal, Trash2 } from 'lucide-react';
 import Sparkline from '../charts/Sparkline';
+import { deleteNode } from '../../lib/api';
 
 function getOSLabel(os) {
   if (!os) return 'Unknown OS';
@@ -47,16 +49,38 @@ function ServiceDot({ label, active }) {
   );
 }
 
-export default function NodeCard({ node }) {
+export default function NodeCard({ node, onDeleted }) {
   const isWindows = node.os?.toLowerCase().includes('windows');
   const ramPct = node.ramTotal > 0 ? (node.ramUsed / node.ramTotal) * 100 : 0;
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirming) { setConfirming(true); return; }
+    setDeleting(true);
+    try {
+      await deleteNode(node.name);
+      onDeleted?.();
+    } catch {
+      setDeleting(false);
+      setConfirming(false);
+    }
+  }
+
+  function handleCancelConfirm(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setConfirming(false);
+  }
 
   return (
     <Link
       to={`/node/${node.name}`}
       className="group bg-slate-800/80 backdrop-blur-sm rounded-2xl p-5 border border-slate-700/50
                  hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5
-                 transition-all duration-200 block"
+                 transition-all duration-200 block relative"
     >
       {/* Заголовок */}
       <div className="flex items-start justify-between mb-3">
@@ -65,8 +89,7 @@ export default function NodeCard({ node }) {
             <div className={`p-2 rounded-lg ${isWindows ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
               {isWindows
                 ? <Monitor className="w-4 h-4 text-blue-400" />
-                : <Terminal className="w-4 h-4 text-emerald-400" />
-              }
+                : <Terminal className="w-4 h-4 text-emerald-400" />}
             </div>
             <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-800
               ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
@@ -76,21 +99,56 @@ export default function NodeCard({ node }) {
             <div className="text-xs text-slate-500">{getOSLabel(node.os)}</div>
           </div>
         </div>
-        <span className={`text-xs px-2 py-0.5 rounded-full font-medium
-          ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-          {node.online ? 'Online' : 'Offline'}
-        </span>
+
+        <div className="flex items-center gap-2">
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium
+            ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+            {node.online ? 'Online' : 'Offline'}
+          </span>
+
+          {/* Кнопка удаления — только для offline */}
+          {!node.online && (
+            confirming ? (
+              <div className="flex items-center gap-1" onClick={e => e.preventDefault()}>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="text-xs px-2 py-0.5 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-all font-medium"
+                >
+                  {deleting ? '...' : 'Удалить'}
+                </button>
+                <button
+                  onClick={handleCancelConfirm}
+                  className="text-xs px-2 py-0.5 rounded-md bg-slate-700/50 text-slate-400 hover:bg-slate-700 border border-slate-600/30 transition-all"
+                >
+                  Отмена
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={handleDelete}
+                title="Удалить узел"
+                className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+              </button>
+            )
+          )}
+        </div>
       </div>
 
-      {/* IP + Uptime */}
+      {/* IP + Uptime / Last seen */}
       <div className="flex items-center gap-3 text-xs text-slate-500 mb-4">
         <span>{node.ip || '—'}</span>
-        <span className="text-slate-600">·</span>
-        <span>⬆ {node.uptime || '0 ч.'}</span>
+        {node.online ? (
+          <><span className="text-slate-600">·</span><span>⬆ {node.uptime || '0 ч.'}</span></>
+        ) : node.lastSeen ? (
+          <><span className="text-slate-600">·</span><span className="text-red-400/70">Был онлайн: {node.lastSeen}</span></>
+        ) : null}
       </div>
 
       {/* Метрики */}
-      <div className="space-y-3">
+      <div className={`space-y-3 ${!node.online ? 'opacity-40 pointer-events-none' : ''}`}>
         <div>
           <div className="flex justify-between text-xs mb-1">
             <span className="text-slate-400">CPU</span>
@@ -98,7 +156,6 @@ export default function NodeCard({ node }) {
           </div>
           <MiniBar value={node.cpu} />
         </div>
-
         <div>
           <div className="flex justify-between text-xs mb-1">
             <span className="text-slate-400">RAM</span>
@@ -109,7 +166,6 @@ export default function NodeCard({ node }) {
           </div>
           <MiniBar value={ramPct} />
         </div>
-
         <div>
           <div className="flex justify-between text-xs mb-1">
             <span className="text-slate-400">Disk</span>
@@ -121,15 +177,10 @@ export default function NodeCard({ node }) {
         </div>
       </div>
 
-      {/* Спарклайн CPU */}
       <div className="mt-4 h-10">
-        <Sparkline
-          data={node.cpuHistory}
-          color={node.online ? '#3b82f6' : '#475569'}
-        />
+        <Sparkline data={node.cpuHistory} color={node.online ? '#3b82f6' : '#475569'} />
       </div>
 
-      {/* Сервисы */}
       <div className="mt-3 flex flex-wrap gap-1.5">
         {isWindows ? (
           <>

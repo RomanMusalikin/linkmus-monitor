@@ -23,3 +23,77 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   @apply bg-slate-600;
 }
+
+/* ── Lamp / Login animations ───────────────────────────── */
+
+/* Покачивание шнурка при нажатии */
+@keyframes cordPull {
+  0%   { transform: scaleY(1); }
+  30%  { transform: scaleY(1.28); }
+  55%  { transform: scaleY(1.16); }
+  75%  { transform: scaleY(1.24); }
+  90%  { transform: scaleY(1.10); }
+  100% { transform: scaleY(1); }
+}
+
+.cord-pulling {
+  animation: cordPull 0.7s ease-in-out forwards;
+  transform-box: fill-box;
+  transform-origin: top center;
+}
+
+/* Включение лампы */
+@keyframes lampTurnOn {
+  0%   { filter: drop-shadow(0 0 4px rgba(56,189,248,0.3)); }
+  40%  { filter: drop-shadow(0 0 28px rgba(56,189,248,1)); }
+  70%  { filter: drop-shadow(0 0 18px rgba(56,189,248,0.75)); }
+  100% { filter: drop-shadow(0 0 22px rgba(56,189,248,0.85)); }
+}
+
+.lamp-lit {
+  animation: lampTurnOn 0.5s ease-out forwards;
+  filter: drop-shadow(0 0 22px rgba(56,189,248,0.85));
+}
+
+/* Выключение лампы — мигание перед гашением */
+@keyframes lampFlickerOff {
+  0%   { opacity: 1; }
+  18%  { opacity: 0.15; }
+  30%  { opacity: 0.9; }
+  48%  { opacity: 0.05; }
+  60%  { opacity: 0.75; }
+  78%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+
+.lamp-flickering {
+  animation: lampFlickerOff 0.7s ease-in forwards;
+}
+
+/* Появление формы снизу */
+@keyframes formSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(32px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.login-form-appear {
+  animation: formSlideUp 0.6s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+/* Пылинки в воздухе */
+@keyframes dustFloat {
+  0%   { transform: translateY(0) translateX(0); opacity: 0; }
+  10%  { opacity: 1; }
+  90%  { opacity: 1; }
+  100% { transform: translateY(-100vh) translateX(20px); opacity: 0; }
+}
+
+.dust-particle {
+  animation: dustFloat linear infinite;
+}

@@ -17,22 +17,20 @@ type NetworkInfo struct {
 }
 
 var (
-	prevNetCounters map[string]psnet.IOCountersStat
-	prevNetTime     time.Time
+	prevNetCounters    map[string]psnet.IOCountersStat
+	prevNetTime        time.Time
+	prevAllNetCounters map[string]psnet.IOCountersStat
+	prevAllNetTime     time.Time
 )
 
-// CollectNetwork возвращает имя интерфейса и скорость трафика (байт/сек).
-// outboundIP — IP-адрес, с которого агент выходит наружу (для определения основного интерфейса).
+// CollectNetwork возвращает имя и скорость трафика основного интерфейса (байт/сек).
 func CollectNetwork(outboundIP string) NetworkInfo {
 	counters, err := psnet.IOCounters(true)
 	if err != nil || len(counters) == 0 {
 		return NetworkInfo{}
 	}
 
-	// Определяем имя основного интерфейса по IP
 	ifaceName := findInterfaceByIP(outboundIP)
-
-	// Если не нашли по IP — берём интерфейс с максимальным трафиком
 	var curr psnet.IOCountersStat
 	found := false
 	for _, c := range counters {
@@ -57,13 +55,13 @@ func CollectNetwork(outboundIP string) NetworkInfo {
 		dt := now.Sub(prevNetTime).Seconds()
 		if dt > 0 {
 			if prev, ok := prevNetCounters[curr.Name]; ok {
-				recv := float64(curr.BytesRecv-prev.BytesRecv) / dt
-				sent := float64(curr.BytesSent-prev.BytesSent) / dt
-				if recv >= 0 {
-					result.BytesRecvSec = recv
+				r := float64(curr.BytesRecv-prev.BytesRecv) / dt
+				s := float64(curr.BytesSent-prev.BytesSent) / dt
+				if r >= 0 {
+					result.BytesRecvSec = r
 				}
-				if sent >= 0 {
-					result.BytesSentSec = sent
+				if s >= 0 {
+					result.BytesSentSec = s
 				}
 			}
 		}
@@ -74,6 +72,54 @@ func CollectNetwork(outboundIP string) NetworkInfo {
 	}
 	prevNetCounters[curr.Name] = curr
 	prevNetTime = now
+	return result
+}
+
+// CollectAllInterfaces возвращает трафик по каждому активному сетевому интерфейсу.
+func CollectAllInterfaces() []NetIfaceInfo {
+	counters, err := psnet.IOCounters(true)
+	if err != nil || len(counters) == 0 {
+		return nil
+	}
+
+	now := time.Now()
+	var result []NetIfaceInfo
+
+	for _, curr := range counters {
+		if curr.Name == "lo" || strings.HasPrefix(curr.Name, "dummy") {
+			continue
+		}
+		if curr.BytesRecv == 0 && curr.BytesSent == 0 {
+			continue
+		}
+
+		info := NetIfaceInfo{Name: curr.Name}
+
+		if !prevAllNetTime.IsZero() && prevAllNetCounters != nil {
+			dt := now.Sub(prevAllNetTime).Seconds()
+			if dt > 0 {
+				if prev, ok := prevAllNetCounters[curr.Name]; ok {
+					r := float64(curr.BytesRecv-prev.BytesRecv) / dt
+					s := float64(curr.BytesSent-prev.BytesSent) / dt
+					if r >= 0 {
+						info.BytesRecvSec = r
+					}
+					if s >= 0 {
+						info.BytesSentSec = s
+					}
+				}
+			}
+		}
+		result = append(result, info)
+	}
+
+	if prevAllNetCounters == nil {
+		prevAllNetCounters = make(map[string]psnet.IOCountersStat)
+	}
+	for _, c := range counters {
+		prevAllNetCounters[c.Name] = c
+	}
+	prevAllNetTime = now
 	return result
 }
 

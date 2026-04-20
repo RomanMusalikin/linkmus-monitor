@@ -10,9 +10,9 @@ export default function NetworkLines({ data }) {
   }
 
   return (
-    <div className="h-48 w-full">
+    <div className="h-52 w-full">
       <ResponsiveContainer width="100%" height="100%">
-        <AreaChart data={data} margin={{ top: 5, right: 10, left: -10, bottom: 0 }}>
+        <AreaChart data={data} margin={{ top: 5, right: 8, left: -10, bottom: 28 }}>
           <defs>
             <linearGradient id="recvGrad" x1="0" y1="0" x2="0" y2="1">
               <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
@@ -24,14 +24,37 @@ export default function NetworkLines({ data }) {
             </linearGradient>
           </defs>
           <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-          <XAxis dataKey="time" stroke="#475569" fontSize={11} tickLine={false} axisLine={false} />
-          <YAxis stroke="#475569" fontSize={11} tickLine={false} axisLine={false}
-            tickFormatter={(v) => v >= 1024 ? `${(v/1024).toFixed(0)}K` : `${v}`} />
+          <XAxis
+            dataKey="time"
+            stroke="#475569"
+            fontSize={10}
+            tickLine={false}
+            axisLine={false}
+            interval="preserveStartEnd"
+            angle={-35}
+            textAnchor="end"
+            dy={4}
+          />
+          <YAxis
+            stroke="#475569"
+            fontSize={11}
+            tickLine={false}
+            axisLine={false}
+            tickFormatter={(v) =>
+              v >= 1024 * 1024 ? `${(v / 1024 / 1024).toFixed(0)}M`
+              : v >= 1024 ? `${(v / 1024).toFixed(0)}K`
+              : `${v}`
+            }
+          />
           <Tooltip
             contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f1f5f9', borderRadius: '0.5rem', fontSize: '12px' }}
-            formatter={(val, name) => [`${(val/1024).toFixed(1)} KB/s`, name]}
+            formatter={(val, name) => {
+              const kb = val / 1024;
+              return [kb >= 1024 ? `${(kb / 1024).toFixed(2)} MB/s` : `${kb.toFixed(1)} KB/s`, name];
+            }}
+            labelStyle={{ color: '#94a3b8', marginBottom: '2px' }}
           />
-          <Legend verticalAlign="top" height={28} wrapperStyle={{ fontSize: '11px', color: '#94a3b8' }} />
+          <Legend verticalAlign="top" height={24} wrapperStyle={{ fontSize: '11px', color: '#94a3b8' }} />
           <Area type="monotone" dataKey="recv" name="↓ Входящий" stroke="#06b6d4" strokeWidth={1.5}
             fillOpacity={1} fill="url(#recvGrad)" dot={false} isAnimationActive={false} />
           <Area type="monotone" dataKey="sent" name="↑ Исходящий" stroke="#3b82f6" strokeWidth={1.5}

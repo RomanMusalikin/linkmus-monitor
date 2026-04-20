@@ -8,7 +8,7 @@ import (
 	"github.com/shirou/gopsutil/v3/process"
 )
 
-// ProcessInfo описывает один процесс для отправки на сервер
+// ProcessInfo описывает один процесс
 type ProcessInfo struct {
 	PID  int32   `json:"pid"`
 	Name string  `json:"name"`
@@ -18,8 +18,25 @@ type ProcessInfo struct {
 }
 
 // CollectProcesses возвращает топ-10 процессов по загрузке CPU.
-// Первый вызов вернёт CPU=0 для всех (gopsutil требует две точки для расчёта дельты).
 func CollectProcesses() []ProcessInfo {
+	return collectTop10(func(a, b ProcessInfo) bool { return a.CPU > b.CPU })
+}
+
+// CollectTopMemProcesses возвращает топ-10 процессов по потреблению RAM.
+func CollectTopMemProcesses() []ProcessInfo {
+	return collectTop10(func(a, b ProcessInfo) bool { return a.RAM > b.RAM })
+}
+
+// CollectProcessCount возвращает общее количество запущенных процессов.
+func CollectProcessCount() int {
+	procs, err := process.Processes()
+	if err != nil {
+		return 0
+	}
+	return len(procs)
+}
+
+func collectTop10(less func(a, b ProcessInfo) bool) []ProcessInfo {
 	procs, err := process.Processes()
 	if err != nil {
 		return nil
@@ -31,16 +48,12 @@ func CollectProcesses() []ProcessInfo {
 		if err != nil || name == "" {
 			continue
 		}
-
 		cpuPct, _ := p.CPUPercent()
-
 		var memMB float64
-		if memInfo, err := p.MemoryInfo(); err == nil && memInfo != nil {
-			memMB = float64(memInfo.RSS) / 1024 / 1024
+		if mi, err := p.MemoryInfo(); err == nil && mi != nil {
+			memMB = float64(mi.RSS) / 1024 / 1024
 		}
-
 		user, _ := p.Username()
-
 		result = append(result, ProcessInfo{
 			PID:  p.Pid,
 			Name: name,
@@ -50,10 +63,7 @@ func CollectProcesses() []ProcessInfo {
 		})
 	}
 
-	sort.Slice(result, func(i, j int) bool {
-		return result[i].CPU > result[j].CPU
-	})
-
+	sort.Slice(result, func(i, j int) bool { return less(result[i], result[j]) })
 	if len(result) > 10 {
 		result = result[:10]
 	}

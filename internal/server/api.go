@@ -4,22 +4,26 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 )
 
 // CpuPoint — одна точка истории CPU
 type CpuPoint struct {
-	Value int `json:"value"`
+	Value int    `json:"value"`
+	Time  string `json:"time"`
 }
 
 // RamPoint — одна точка истории RAM (процент)
 type RamPoint struct {
-	Value int `json:"value"`
+	Value int    `json:"value"`
+	Time  string `json:"time"`
 }
 
 // NetPoint — одна точка истории сети (байт/сек)
 type NetPoint struct {
 	Recv float64 `json:"recv"`
 	Sent float64 `json:"sent"`
+	Time string  `json:"time"`
 }
 
 // ProcessInfo — информация об одном процессе
@@ -31,36 +35,97 @@ type ProcessInfo struct {
 	User string  `json:"user"`
 }
 
+// DiskInfo — дисковый раздел
+type DiskInfo struct {
+	Mount       string  `json:"mount"`
+	FSType      string  `json:"fstype"`
+	TotalGB     float64 `json:"totalGB"`
+	UsedGB      float64 `json:"usedGB"`
+	UsedPercent float64 `json:"usedPercent"`
+}
+
+// NetIfaceInfo — сетевой интерфейс
+type NetIfaceInfo struct {
+	Name         string  `json:"name"`
+	BytesRecvSec float64 `json:"bytesRecvSec"`
+	BytesSentSec float64 `json:"bytesSentSec"`
+}
+
 // NodeSummary — полный набор данных по узлу, отдаваемый фронтенду
 type NodeSummary struct {
-	Name         string        `json:"name"`
-	OS           string        `json:"os"`
-	IP           string        `json:"ip"`
-	Online       bool          `json:"online"`
-	CPU          int           `json:"cpu"`
-	CPUUser      float64       `json:"cpuUser"`
-	CPUSystem    float64       `json:"cpuSystem"`
-	LoadAvg1     float64       `json:"loadAvg1"`
-	LoadAvg5     float64       `json:"loadAvg5"`
-	LoadAvg15    float64       `json:"loadAvg15"`
-	RAMUsed      float64       `json:"ramUsed"`    // ГБ
-	RAMTotal     float64       `json:"ramTotal"`   // ГБ
-	RAMCached    float64       `json:"ramCached"`  // ГБ
-	RAMBuffers   float64       `json:"ramBuffers"` // ГБ
-	SwapUsed     float64       `json:"swapUsed"`   // ГБ
-	SwapTotal    float64       `json:"swapTotal"`  // ГБ
-	DiskUsage    float64       `json:"diskUsage"`  // %
-	RDPRunning   bool          `json:"rdpRunning"`
-	SMBRunning   bool          `json:"smbRunning"`
-	Uptime       string        `json:"uptime"`
-	Ping         int           `json:"ping"`
-	NetInterface string        `json:"netInterface"`
-	NetRecvSec   float64       `json:"netRecvSec"` // байт/сек
-	NetSentSec   float64       `json:"netSentSec"` // байт/сек
-	CPUHistory   []CpuPoint    `json:"cpuHistory"`
-	RAMHistory   []RamPoint    `json:"ramHistory"`
-	NetHistory   []NetPoint    `json:"netHistory"`
-	Processes    []ProcessInfo `json:"processes"`
+	Name     string `json:"name"`
+	OS       string `json:"os"`
+	IP       string `json:"ip"`
+	Online   bool   `json:"online"`
+	LastSeen string `json:"lastSeen"`
+	Uptime   string `json:"uptime"`
+	BootTime string `json:"bootTime"`
+	Ping     int    `json:"ping"`
+
+	// CPU
+	CPU          int       `json:"cpu"`
+	CPUUser      float64   `json:"cpuUser"`
+	CPUSystem    float64   `json:"cpuSystem"`
+	CPUModel     string    `json:"cpuModel"`
+	CPUFreqMHz   float64   `json:"cpuFreqMHz"`
+	CPUCores     []float64 `json:"cpuCores"`
+	LoadAvg1     float64   `json:"loadAvg1"`
+	LoadAvg5     float64   `json:"loadAvg5"`
+	LoadAvg15    float64   `json:"loadAvg15"`
+
+	// RAM
+	RAMUsed    float64 `json:"ramUsed"`    // ГБ
+	RAMTotal   float64 `json:"ramTotal"`   // ГБ
+	RAMCached  float64 `json:"ramCached"`  // ГБ
+	RAMBuffers float64 `json:"ramBuffers"` // ГБ
+	SwapUsed   float64 `json:"swapUsed"`   // ГБ
+	SwapTotal  float64 `json:"swapTotal"`  // ГБ
+
+	// Диск
+	DiskUsage    float64    `json:"diskUsage"` // %
+	DiskReadSec  float64    `json:"diskReadSec"`
+	DiskWriteSec float64    `json:"diskWriteSec"`
+	Disks        []DiskInfo `json:"disks"`
+
+	// Службы
+	RDPRunning bool `json:"rdpRunning"`
+	SMBRunning bool `json:"smbRunning"`
+
+	// Сеть
+	NetInterface string         `json:"netInterface"`
+	NetRecvSec   float64        `json:"netRecvSec"`
+	NetSentSec   float64        `json:"netSentSec"`
+	AllIfaces    []NetIfaceInfo `json:"allIfaces"`
+
+	// Процессы
+	ProcessCount     int           `json:"processCount"`
+	LoggedUsers      int           `json:"loggedUsers"`
+	Processes        []ProcessInfo `json:"processes"`
+	TopMemProcesses  []ProcessInfo `json:"topMemProcesses"`
+
+	// История (для графиков)
+	CPUHistory []CpuPoint `json:"cpuHistory"`
+	RAMHistory []RamPoint `json:"ramHistory"`
+	NetHistory []NetPoint `json:"netHistory"`
+}
+
+// HandleNodeDelete — DELETE /api/nodes/{name}
+func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodDelete {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	name := strings.TrimPrefix(r.URL.Path, "/api/nodes/")
+	if name == "" {
+		http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
+		return
+	}
+	if _, err := dbConn.Exec(`DELETE FROM metrics WHERE node_name = ?`, name); err != nil {
+		http.Error(w, `{"error":"delete failed"}`, http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 // HandleNodes — GET /api/nodes

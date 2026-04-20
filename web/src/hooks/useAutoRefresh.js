@@ -36,5 +36,5 @@ export default function useAutoRefresh(fetchFn, intervalMs = 5000) {
     };
   }, [loadData, intervalMs]);
 
-  return { data, loading, error };
+  return { data, loading, error, refresh: loadData };
 }

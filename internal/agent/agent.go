@@ -17,30 +17,57 @@ import (
 
 // MetricPayload — полный набор метрик, отправляемый агентом на сервер
 type MetricPayload struct {
-	NodeName      string  `json:"node_name"`
-	OS            string  `json:"os"`
-	IP            string  `json:"ip"`
-	Uptime        string  `json:"uptime"`
-	Timestamp     string  `json:"timestamp"`
-	CPUUsage      float64 `json:"cpu_usage"`
-	CPUUser       float64 `json:"cpu_user"`
-	CPUSystem     float64 `json:"cpu_system"`
-	LoadAvg1      float64 `json:"load_avg_1"`
-	LoadAvg5      float64 `json:"load_avg_5"`
-	LoadAvg15     float64 `json:"load_avg_15"`
-	RAMUsage      float64 `json:"ram_usage"`   // ГБ используется
-	RAMTotal      float64 `json:"ram_total"`   // ГБ всего
-	RAMCached     float64 `json:"ram_cached"`  // ГБ кэш
-	RAMBuffers    float64 `json:"ram_buffers"` // ГБ буферы
-	SwapUsed      float64 `json:"swap_used"`   // ГБ
-	SwapTotal     float64 `json:"swap_total"`  // ГБ
-	DiskUsage     float64 `json:"disk_usage"`  // % заполнения C:\ или /
-	RDPRunning    bool    `json:"rdp_running"`
-	SMBRunning    bool    `json:"smb_running"`
-	NetInterface  string  `json:"net_interface"`
-	NetBytesRecv  float64 `json:"net_bytes_recv"` // байт/сек
-	NetBytesSent  float64 `json:"net_bytes_sent"` // байт/сек
-	ProcessesJSON string  `json:"processes_json"` // JSON-массив топ-10 процессов
+	NodeName    string  `json:"node_name"`
+	OS          string  `json:"os"`
+	IP          string  `json:"ip"`
+	Uptime      string  `json:"uptime"`
+	BootTime    string  `json:"boot_time"`
+	Timestamp   string  `json:"timestamp"`
+	LoggedUsers int     `json:"logged_users"`
+
+	// CPU
+	CPUUsage    float64 `json:"cpu_usage"`
+	CPUUser     float64 `json:"cpu_user"`
+	CPUSystem   float64 `json:"cpu_system"`
+	CPUModel    string  `json:"cpu_model"`
+	CPUFreqMHz  float64 `json:"cpu_freq_mhz"`
+	CPUCoresJSON string `json:"cpu_cores_json"` // JSON []float64
+
+	// Load average
+	LoadAvg1  float64 `json:"load_avg_1"`
+	LoadAvg5  float64 `json:"load_avg_5"`
+	LoadAvg15 float64 `json:"load_avg_15"`
+
+	// RAM
+	RAMUsage   float64 `json:"ram_usage"`   // ГБ используется
+	RAMTotal   float64 `json:"ram_total"`   // ГБ всего
+	RAMCached  float64 `json:"ram_cached"`  // ГБ кэш
+	RAMBuffers float64 `json:"ram_buffers"` // ГБ буферы
+	SwapUsed   float64 `json:"swap_used"`   // ГБ
+	SwapTotal  float64 `json:"swap_total"`  // ГБ
+
+	// Диск
+	DiskUsage    float64 `json:"disk_usage"`    // % заполнения корневого раздела
+	DiskReadSec  float64 `json:"disk_read_sec"` // байт/сек чтение (суммарно)
+	DiskWriteSec float64 `json:"disk_write_sec"`// байт/сек запись (суммарно)
+	DisksJSON    string  `json:"disks_json"`    // JSON []DiskInfo — все разделы
+
+	// Службы
+	RDPRunning bool `json:"rdp_running"`
+	SMBRunning bool `json:"smb_running"`
+
+	// Сеть — основной интерфейс
+	NetInterface string  `json:"net_interface"`
+	NetBytesRecv float64 `json:"net_bytes_recv"` // байт/сек
+	NetBytesSent float64 `json:"net_bytes_sent"` // байт/сек
+
+	// Сеть — все интерфейсы
+	AllIfacesJSON string `json:"all_ifaces_json"` // JSON []NetIfaceInfo
+
+	// Процессы
+	ProcessCount  int    `json:"process_count"`
+	ProcessesJSON string `json:"processes_json"`  // JSON топ-10 по CPU
+	TopMemJSON    string `json:"top_mem_json"`    // JSON топ-10 по RAM
 }
 
 func Run() {
@@ -66,57 +93,110 @@ func collectAndSend(t time.Time, serverURL string) {
 	// Системная информация
 	h, _ := host.Info()
 
+	// Дата последней загрузки
+	bootTime := ""
+	if h != nil {
+		bootTime = time.Unix(int64(h.BootTime), 0).Local().Format("02.01.2006 15:04")
+	}
+
+	// Залогиненные пользователи
+	loggedUsers := 0
+	if users, err := host.Users(); err == nil {
+		loggedUsers = len(users)
+	}
+
 	// Память
 	v, _ := mem.VirtualMemory()
 	s, _ := mem.SwapMemory()
 
-	// CPU: user%, system%, total% через дельту между вызовами
+	// CPU: user%, system%, total%
 	cpuUser, cpuSystem, cpuTotal := collector.CollectCPUBreakdown()
 
-	// Load average (0/0/0 на Windows, реальные значения на Linux)
+	// CPU по ядрам
+	cpuCores := collector.CollectCPUPerCore()
+	cpuCoresJSON, _ := json.Marshal(cpuCores)
+
+	// Модель и частота CPU
+	cpuModel, cpuFreq := collector.CollectCPUInfo()
+
+	// Load average (0 на Windows)
 	var la1, la5, la15 float64
 	if avg, err := load.Avg(); err == nil && avg != nil {
 		la1, la5, la15 = avg.Load1, avg.Load5, avg.Load15
 	}
 
-	// Диск
+	// Диск — корневой раздел
 	diskUsg := collector.CollectDisk()
 
-	// Службы (RDP/SMB) — только Windows
+	// Диск — все разделы
+	allDisks := collector.CollectAllDisks()
+	disksJSON, _ := json.Marshal(allDisks)
+
+	// Диск — I/O
+	diskReadSec, diskWriteSec := collector.CollectDiskIO()
+
+	// Службы (RDP/SMB) — только Windows, на Linux возвращает false/false
 	rdpStatus, smbStatus := collector.CollectServices()
 
-	// Сеть
+	// Сеть — основной интерфейс
 	netInfo := collector.CollectNetwork(outboundIP)
 
-	// Процессы (топ-10 по CPU)
+	// Сеть — все интерфейсы
+	allIfaces := collector.CollectAllInterfaces()
+	allIfacesJSON, _ := json.Marshal(allIfaces)
+
+	// Процессы
+	processCount := collector.CollectProcessCount()
 	procs := collector.CollectProcesses()
 	procsJSON, _ := json.Marshal(procs)
+	topMem := collector.CollectTopMemProcesses()
+	topMemJSON, _ := json.Marshal(topMem)
+
+	uptime := "0 ч."
+	if h != nil {
+		uptime = fmt.Sprintf("%d ч.", h.Uptime/3600)
+	}
+	osStr := ""
+	if h != nil {
+		osStr = h.OS + " " + h.Platform
+	}
 
 	payload := MetricPayload{
-		NodeName:      hostname,
-		OS:            h.OS + " " + h.Platform,
-		IP:            outboundIP,
-		Uptime:        fmt.Sprintf("%d ч.", h.Uptime/3600),
-		Timestamp:     t.Format(time.RFC3339),
-		CPUUsage:      cpuTotal,
-		CPUUser:       cpuUser,
-		CPUSystem:     cpuSystem,
-		LoadAvg1:      la1,
-		LoadAvg5:      la5,
-		LoadAvg15:     la15,
-		RAMUsage:      float64(v.Used) / 1024 / 1024 / 1024,
-		RAMTotal:      float64(v.Total) / 1024 / 1024 / 1024,
-		RAMCached:     float64(v.Cached) / 1024 / 1024 / 1024,
-		RAMBuffers:    float64(v.Buffers) / 1024 / 1024 / 1024,
-		SwapUsed:      float64(s.Used) / 1024 / 1024 / 1024,
-		SwapTotal:     float64(s.Total) / 1024 / 1024 / 1024,
-		DiskUsage:     diskUsg,
-		RDPRunning:    rdpStatus,
-		SMBRunning:    smbStatus,
-		NetInterface:  netInfo.Interface,
-		NetBytesRecv:  netInfo.BytesRecvSec,
-		NetBytesSent:  netInfo.BytesSentSec,
+		NodeName:     hostname,
+		OS:           osStr,
+		IP:           outboundIP,
+		Uptime:       uptime,
+		BootTime:     bootTime,
+		Timestamp:    t.Format(time.RFC3339),
+		LoggedUsers:  loggedUsers,
+		CPUUsage:     cpuTotal,
+		CPUUser:      cpuUser,
+		CPUSystem:    cpuSystem,
+		CPUModel:     cpuModel,
+		CPUFreqMHz:   cpuFreq,
+		CPUCoresJSON: string(cpuCoresJSON),
+		LoadAvg1:     la1,
+		LoadAvg5:     la5,
+		LoadAvg15:    la15,
+		RAMUsage:     float64(v.Used) / 1024 / 1024 / 1024,
+		RAMTotal:     float64(v.Total) / 1024 / 1024 / 1024,
+		RAMCached:    float64(v.Cached) / 1024 / 1024 / 1024,
+		RAMBuffers:   float64(v.Buffers) / 1024 / 1024 / 1024,
+		SwapUsed:     float64(s.Used) / 1024 / 1024 / 1024,
+		SwapTotal:    float64(s.Total) / 1024 / 1024 / 1024,
+		DiskUsage:    diskUsg,
+		DiskReadSec:  diskReadSec,
+		DiskWriteSec: diskWriteSec,
+		DisksJSON:    string(disksJSON),
+		RDPRunning:   rdpStatus,
+		SMBRunning:   smbStatus,
+		NetInterface: netInfo.Interface,
+		NetBytesRecv: netInfo.BytesRecvSec,
+		NetBytesSent: netInfo.BytesSentSec,
+		AllIfacesJSON: string(allIfacesJSON),
+		ProcessCount:  processCount,
 		ProcessesJSON: string(procsJSON),
+		TopMemJSON:    string(topMemJSON),
 	}
 
 	SendToServer(serverURL, payload)
@@ -129,6 +209,5 @@ func getOutboundIP() string {
 		return "127.0.0.1"
 	}
 	defer conn.Close()
-	localAddr := conn.LocalAddr().(*net.UDPAddr)
-	return localAddr.IP.String()
+	return conn.LocalAddr().(*net.UDPAddr).IP.String()
 }

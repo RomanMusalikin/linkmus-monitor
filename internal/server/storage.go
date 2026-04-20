@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"log"
+	"time"
 
 	_ "modernc.org/sqlite"
 )
@@ -14,7 +15,27 @@ func InitDB(filepath string) *sql.DB {
 		log.Fatalf("❌ Ошибка открытия БД: %v", err)
 	}
 
-	// Создаём таблицу (старые колонки)
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS users (
+		id       INTEGER PRIMARY KEY AUTOINCREMENT,
+		login    TEXT UNIQUE NOT NULL,
+		password TEXT NOT NULL
+	)`)
+	if err != nil {
+		log.Fatalf("❌ Ошибка создания таблицы users: %v", err)
+	}
+
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS sessions (
+		token      TEXT PRIMARY KEY,
+		user_id    INTEGER NOT NULL REFERENCES users(id),
+		created_at DATETIME NOT NULL,
+		expires_at DATETIME NOT NULL
+	)`)
+	if err != nil {
+		log.Fatalf("❌ Ошибка создания таблицы sessions: %v", err)
+	}
+
 	_, err = db.Exec(`
 	CREATE TABLE IF NOT EXISTS metrics (
 		id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -34,7 +55,6 @@ func InitDB(filepath string) *sql.DB {
 		log.Fatalf("❌ Ошибка создания таблицы: %v", err)
 	}
 
-	// Миграция: добавляем новые колонки (ошибки игнорируем — колонка уже может существовать)
 	MigrateDB(db)
 
 	log.Println("✅ База данных инициализирована")
@@ -42,22 +62,33 @@ func InitDB(filepath string) *sql.DB {
 }
 
 // MigrateDB добавляет новые колонки к существующей таблице metrics.
-// Если колонка уже есть — ошибка игнорируется.
+// Ошибки игнорируются — колонка может уже существовать.
 func MigrateDB(db *sql.DB) {
 	cols := []string{
-		`ALTER TABLE metrics ADD COLUMN cpu_user       REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN cpu_system     REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN load_avg_1     REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN load_avg_5     REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN load_avg_15    REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN ram_cached     REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN ram_buffers    REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN swap_used      REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN swap_total     REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN net_interface  TEXT    DEFAULT ''`,
-		`ALTER TABLE metrics ADD COLUMN net_bytes_recv REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN net_bytes_sent REAL    DEFAULT 0`,
-		`ALTER TABLE metrics ADD COLUMN processes_json TEXT    DEFAULT '[]'`,
+		`ALTER TABLE metrics ADD COLUMN cpu_user        REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN cpu_system      REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN cpu_model       TEXT    DEFAULT ''`,
+		`ALTER TABLE metrics ADD COLUMN cpu_freq_mhz    REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN cpu_cores_json  TEXT    DEFAULT '[]'`,
+		`ALTER TABLE metrics ADD COLUMN load_avg_1      REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN load_avg_5      REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN load_avg_15     REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN ram_cached      REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN ram_buffers     REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN swap_used       REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN swap_total      REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN disk_read_sec   REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN disk_write_sec  REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN disks_json      TEXT    DEFAULT '[]'`,
+		`ALTER TABLE metrics ADD COLUMN net_interface   TEXT    DEFAULT ''`,
+		`ALTER TABLE metrics ADD COLUMN net_bytes_recv  REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN net_bytes_sent  REAL    DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN all_ifaces_json TEXT    DEFAULT '[]'`,
+		`ALTER TABLE metrics ADD COLUMN process_count   INTEGER DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN logged_users    INTEGER DEFAULT 0`,
+		`ALTER TABLE metrics ADD COLUMN boot_time       TEXT    DEFAULT ''`,
+		`ALTER TABLE metrics ADD COLUMN processes_json  TEXT    DEFAULT '[]'`,
+		`ALTER TABLE metrics ADD COLUMN top_mem_json    TEXT    DEFAULT '[]'`,
 	}
 	for _, stmt := range cols {
 		db.Exec(stmt)
@@ -67,29 +98,28 @@ func MigrateDB(db *sql.DB) {
 func SaveMetric(db *sql.DB, p MetricPayload) error {
 	_, err := db.Exec(`
 	INSERT INTO metrics (
-		node_name, os, ip, uptime, timestamp,
-		cpu_usage, cpu_user, cpu_system,
+		node_name, os, ip, uptime, boot_time, timestamp, logged_users,
+		cpu_usage, cpu_user, cpu_system, cpu_model, cpu_freq_mhz, cpu_cores_json,
 		load_avg_1, load_avg_5, load_avg_15,
-		ram_usage, ram_total, ram_cached, ram_buffers,
-		swap_used, swap_total,
-		disk_usage, rdp_running, smb_running,
-		net_interface, net_bytes_recv, net_bytes_sent,
-		processes_json
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-		p.NodeName, p.OS, p.IP, p.Uptime, p.Timestamp,
-		p.CPUUsage, p.CPUUser, p.CPUSystem,
+		ram_usage, ram_total, ram_cached, ram_buffers, swap_used, swap_total,
+		disk_usage, disk_read_sec, disk_write_sec, disks_json,
+		rdp_running, smb_running,
+		net_interface, net_bytes_recv, net_bytes_sent, all_ifaces_json,
+		process_count, processes_json, top_mem_json
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		p.NodeName, p.OS, p.IP, p.Uptime, p.BootTime, p.Timestamp, p.LoggedUsers,
+		p.CPUUsage, p.CPUUser, p.CPUSystem, p.CPUModel, p.CPUFreqMHz, p.CPUCoresJSON,
 		p.LoadAvg1, p.LoadAvg5, p.LoadAvg15,
-		p.RAMUsage, p.RAMTotal, p.RAMCached, p.RAMBuffers,
-		p.SwapUsed, p.SwapTotal,
-		p.DiskUsage, p.RDPRunning, p.SMBRunning,
-		p.NetInterface, p.NetBytesRecv, p.NetBytesSent,
-		p.ProcessesJSON,
+		p.RAMUsage, p.RAMTotal, p.RAMCached, p.RAMBuffers, p.SwapUsed, p.SwapTotal,
+		p.DiskUsage, p.DiskReadSec, p.DiskWriteSec, p.DisksJSON,
+		p.RDPRunning, p.SMBRunning,
+		p.NetInterface, p.NetBytesRecv, p.NetBytesSent, p.AllIfacesJSON,
+		p.ProcessCount, p.ProcessesJSON, p.TopMemJSON,
 	)
 	return err
 }
 
 func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
-	// 1. Список всех уникальных узлов
 	rows, err := db.Query(`SELECT DISTINCT node_name FROM metrics`)
 	if err != nil {
 		return nil, err
@@ -106,89 +136,136 @@ func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
 	var nodes []NodeSummary
 
 	for _, name := range nodeNames {
-		// 2. Последняя метрика узла
-		var last MetricPayload
 		var (
-			cpuUser, cpuSystem        sql.NullFloat64
-			la1, la5, la15            sql.NullFloat64
-			ramCached, ramBuffers     sql.NullFloat64
-			swapUsed, swapTotal       sql.NullFloat64
-			netIface                  sql.NullString
-			netRecv, netSent          sql.NullFloat64
-			procsJSON                 sql.NullString
+			lastTimestamp                     string
+			cpuUsage                          float64
+			cpuUser, cpuSystem                sql.NullFloat64
+			cpuModel                          sql.NullString
+			cpuFreq                           sql.NullFloat64
+			cpuCoresJSON                      sql.NullString
+			la1, la5, la15                    sql.NullFloat64
+			ramUsage, ramTotal                float64
+			ramCached, ramBuffers             sql.NullFloat64
+			swapUsed, swapTotal               sql.NullFloat64
+			diskUsage                         float64
+			diskReadSec, diskWriteSec         sql.NullFloat64
+			disksJSON                         sql.NullString
+			rdpRunning, smbRunning            bool
+			os_, ip, uptime                   string
+			bootTime                          sql.NullString
+			netIface                          sql.NullString
+			netRecv, netSent                  sql.NullFloat64
+			allIfacesJSON                     sql.NullString
+			processCount, loggedUsers         sql.NullInt64
+			procsJSON, topMemJSON             sql.NullString
 		)
 
 		err := db.QueryRow(`
 			SELECT
-				timestamp, cpu_usage, cpu_user, cpu_system,
+				timestamp,
+				cpu_usage, cpu_user, cpu_system, cpu_model, cpu_freq_mhz, cpu_cores_json,
 				load_avg_1, load_avg_5, load_avg_15,
-				ram_usage, ram_total, ram_cached, ram_buffers,
-				swap_used, swap_total,
-				disk_usage, rdp_running, smb_running,
-				os, ip, uptime,
-				net_interface, net_bytes_recv, net_bytes_sent,
-				processes_json
+				ram_usage, ram_total, ram_cached, ram_buffers, swap_used, swap_total,
+				disk_usage, disk_read_sec, disk_write_sec, disks_json,
+				rdp_running, smb_running,
+				os, ip, uptime, boot_time,
+				net_interface, net_bytes_recv, net_bytes_sent, all_ifaces_json,
+				process_count, logged_users,
+				processes_json, top_mem_json
 			FROM metrics
 			WHERE node_name = ?
 			ORDER BY timestamp DESC LIMIT 1`, name).Scan(
-			&last.Timestamp, &last.CPUUsage, &cpuUser, &cpuSystem,
+			&lastTimestamp,
+			&cpuUsage, &cpuUser, &cpuSystem, &cpuModel, &cpuFreq, &cpuCoresJSON,
 			&la1, &la5, &la15,
-			&last.RAMUsage, &last.RAMTotal, &ramCached, &ramBuffers,
-			&swapUsed, &swapTotal,
-			&last.DiskUsage, &last.RDPRunning, &last.SMBRunning,
-			&last.OS, &last.IP, &last.Uptime,
-			&netIface, &netRecv, &netSent,
-			&procsJSON,
+			&ramUsage, &ramTotal, &ramCached, &ramBuffers, &swapUsed, &swapTotal,
+			&diskUsage, &diskReadSec, &diskWriteSec, &disksJSON,
+			&rdpRunning, &smbRunning,
+			&os_, &ip, &uptime, &bootTime,
+			&netIface, &netRecv, &netSent, &allIfacesJSON,
+			&processCount, &loggedUsers,
+			&procsJSON, &topMemJSON,
 		)
 		if err != nil {
 			log.Printf("Ошибка получения метрики для %s: %v", name, err)
 			continue
 		}
 
-		// 3. История CPU (20 точек, от старых к новым)
-		cpuHistory := queryCPUHistory(db, name)
+		// Онлайн-статус: последняя метрика не старше 30 секунд
+		online := false
+		lastSeen := lastTimestamp
+		if t, err := time.Parse(time.RFC3339, lastTimestamp); err == nil {
+			online = time.Since(t) < 30*time.Second
+			lastSeen = t.Local().Format("02.01 15:04:05")
+		}
 
-		// 4. История RAM % (20 точек)
-		ramHistory := queryRAMHistory(db, name)
+		// Парсим JSON-поля
+		var cpuCores []float64
+		if cpuCoresJSON.Valid && cpuCoresJSON.String != "" && cpuCoresJSON.String != "null" {
+			json.Unmarshal([]byte(cpuCoresJSON.String), &cpuCores)
+		}
 
-		// 5. История сети (20 точек)
-		netHistory := queryNetHistory(db, name)
+		var disks []DiskInfo
+		if disksJSON.Valid && disksJSON.String != "" && disksJSON.String != "null" {
+			json.Unmarshal([]byte(disksJSON.String), &disks)
+		}
 
-		// 6. Парсим процессы из JSON
+		var allIfaces []NetIfaceInfo
+		if allIfacesJSON.Valid && allIfacesJSON.String != "" && allIfacesJSON.String != "null" {
+			json.Unmarshal([]byte(allIfacesJSON.String), &allIfaces)
+		}
+
 		var processes []ProcessInfo
 		if procsJSON.Valid && procsJSON.String != "" && procsJSON.String != "null" {
 			json.Unmarshal([]byte(procsJSON.String), &processes)
 		}
 
+		var topMemProcesses []ProcessInfo
+		if topMemJSON.Valid && topMemJSON.String != "" && topMemJSON.String != "null" {
+			json.Unmarshal([]byte(topMemJSON.String), &topMemProcesses)
+		}
+
 		summary := NodeSummary{
 			Name:         name,
-			OS:           last.OS,
-			IP:           last.IP,
-			Online:       true,
-			CPU:          int(last.CPUUsage),
+			OS:           os_,
+			IP:           ip,
+			Online:       online,
+			LastSeen:     lastSeen,
+			Uptime:       uptime,
+			BootTime:     bootTime.String,
+			Ping:         1,
+			CPU:          int(cpuUsage),
 			CPUUser:      cpuUser.Float64,
 			CPUSystem:    cpuSystem.Float64,
+			CPUModel:     cpuModel.String,
+			CPUFreqMHz:   cpuFreq.Float64,
+			CPUCores:     cpuCores,
 			LoadAvg1:     la1.Float64,
 			LoadAvg5:     la5.Float64,
 			LoadAvg15:    la15.Float64,
-			RAMUsed:      last.RAMUsage,
-			RAMTotal:     last.RAMTotal,
+			RAMUsed:      ramUsage,
+			RAMTotal:     ramTotal,
 			RAMCached:    ramCached.Float64,
 			RAMBuffers:   ramBuffers.Float64,
 			SwapUsed:     swapUsed.Float64,
 			SwapTotal:    swapTotal.Float64,
-			DiskUsage:    last.DiskUsage,
-			RDPRunning:   last.RDPRunning,
-			SMBRunning:   last.SMBRunning,
-			Uptime:       last.Uptime,
-			Ping:         1,
+			DiskUsage:    diskUsage,
+			DiskReadSec:  diskReadSec.Float64,
+			DiskWriteSec: diskWriteSec.Float64,
+			Disks:        disks,
+			RDPRunning:   rdpRunning,
+			SMBRunning:   smbRunning,
 			NetInterface: netIface.String,
 			NetRecvSec:   netRecv.Float64,
 			NetSentSec:   netSent.Float64,
-			CPUHistory:   cpuHistory,
-			RAMHistory:   ramHistory,
-			NetHistory:   netHistory,
+			AllIfaces:    allIfaces,
+			ProcessCount: int(processCount.Int64),
+			LoggedUsers:  int(loggedUsers.Int64),
 			Processes:    processes,
+			TopMemProcesses: topMemProcesses,
+			CPUHistory:   queryCPUHistory(db, name),
+			RAMHistory:   queryRAMHistory(db, name),
+			NetHistory:   queryNetHistory(db, name),
 		}
 
 		nodes = append(nodes, summary)
@@ -197,58 +274,74 @@ func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
 	return nodes, nil
 }
 
+func formatHistoryTime(ts string) string {
+	if t, err := time.Parse(time.RFC3339, ts); err == nil {
+		return t.Local().Format("15:04:05")
+	}
+	return ts
+}
+
 func queryCPUHistory(db *sql.DB, name string) []CpuPoint {
 	rows, err := db.Query(
-		`SELECT cpu_usage FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		`SELECT cpu_usage, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 
-	var temp []int
+	type row struct {
+		v  int
+		ts string
+	}
+	var temp []row
 	for rows.Next() {
 		var v float64
-		if err := rows.Scan(&v); err == nil {
-			temp = append(temp, int(v))
+		var ts string
+		if err := rows.Scan(&v, &ts); err == nil {
+			temp = append(temp, row{int(v), ts})
 		}
 	}
-	// Разворачиваем: от старых к новым
 	result := make([]CpuPoint, len(temp))
-	for i, v := range temp {
-		result[len(temp)-1-i] = CpuPoint{Value: v}
+	for i, r := range temp {
+		result[len(temp)-1-i] = CpuPoint{Value: r.v, Time: formatHistoryTime(r.ts)}
 	}
 	return result
 }
 
 func queryRAMHistory(db *sql.DB, name string) []RamPoint {
 	rows, err := db.Query(
-		`SELECT ram_usage, ram_total FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		`SELECT ram_usage, ram_total, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 
-	var temp []int
+	type row struct {
+		pct int
+		ts  string
+	}
+	var temp []row
 	for rows.Next() {
 		var used, total float64
-		if err := rows.Scan(&used, &total); err == nil {
+		var ts string
+		if err := rows.Scan(&used, &total, &ts); err == nil {
 			pct := 0
 			if total > 0 {
 				pct = int(used / total * 100)
 			}
-			temp = append(temp, pct)
+			temp = append(temp, row{pct, ts})
 		}
 	}
 	result := make([]RamPoint, len(temp))
-	for i, v := range temp {
-		result[len(temp)-1-i] = RamPoint{Value: v}
+	for i, r := range temp {
+		result[len(temp)-1-i] = RamPoint{Value: r.pct, Time: formatHistoryTime(r.ts)}
 	}
 	return result
 }
 
 func queryNetHistory(db *sql.DB, name string) []NetPoint {
 	rows, err := db.Query(`
-		SELECT COALESCE(net_bytes_recv, 0), COALESCE(net_bytes_sent, 0)
+		SELECT COALESCE(net_bytes_recv, 0), COALESCE(net_bytes_sent, 0), timestamp
 		FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
 	if err != nil {
 		return nil
@@ -258,8 +351,9 @@ func queryNetHistory(db *sql.DB, name string) []NetPoint {
 	var temp []NetPoint
 	for rows.Next() {
 		var recv, sent float64
-		if err := rows.Scan(&recv, &sent); err == nil {
-			temp = append(temp, NetPoint{Recv: recv, Sent: sent})
+		var ts string
+		if err := rows.Scan(&recv, &sent, &ts); err == nil {
+			temp = append(temp, NetPoint{Recv: recv, Sent: sent, Time: formatHistoryTime(ts)})
 		}
 	}
 	result := make([]NetPoint, len(temp))

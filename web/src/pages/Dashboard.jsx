@@ -18,7 +18,7 @@ function StatCard({ icon: Icon, label, value, sub, color = 'text-blue-400', bg =
 }
 
 export default function Dashboard() {
-  const { data: nodes, loading, error } = useNodes();
+  const { data: nodes, loading, error, refresh } = useNodes();
 
   if (loading && !nodes) {
     return (
@@ -125,7 +125,7 @@ export default function Dashboard() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
           {nodes.map(node => (
-            <NodeCard key={node.name} node={node} />
+            <NodeCard key={node.name} node={node} onDeleted={refresh} />
           ))}
         </div>
       )}
