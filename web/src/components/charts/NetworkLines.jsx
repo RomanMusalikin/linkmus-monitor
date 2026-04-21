@@ -9,6 +9,9 @@ export default function NetworkLines({ data }) {
     );
   }
 
+  const tickInterval = Math.max(0, Math.floor(data.length / 10) - 1);
+  const fmt = data.length > 36 ? (t) => t.slice(0, 5) : undefined;
+
   return (
     <div className="h-52 w-full">
       <ResponsiveContainer width="100%" height="100%">
@@ -30,7 +33,8 @@ export default function NetworkLines({ data }) {
             fontSize={10}
             tickLine={false}
             axisLine={false}
-            interval="preserveStartEnd"
+            interval={tickInterval}
+            tickFormatter={fmt}
             angle={-35}
             textAnchor="end"
             dy={4}
@@ -49,6 +53,7 @@ export default function NetworkLines({ data }) {
           <Tooltip
             contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f1f5f9', borderRadius: '0.5rem', fontSize: '12px' }}
             formatter={(val, name) => {
+              if (val == null) return ['—', name];
               const kb = val / 1024;
               return [kb >= 1024 ? `${(kb / 1024).toFixed(2)} MB/s` : `${kb.toFixed(1)} KB/s`, name];
             }}
@@ -56,9 +61,9 @@ export default function NetworkLines({ data }) {
           />
           <Legend verticalAlign="top" height={24} wrapperStyle={{ fontSize: '11px', color: '#94a3b8' }} />
           <Area type="monotone" dataKey="recv" name="↓ Входящий" stroke="#06b6d4" strokeWidth={1.5}
-            fillOpacity={1} fill="url(#recvGrad)" dot={false} isAnimationActive={false} />
+            fillOpacity={1} fill="url(#recvGrad)" dot={false} isAnimationActive={false} connectNulls={false} />
           <Area type="monotone" dataKey="sent" name="↑ Исходящий" stroke="#3b82f6" strokeWidth={1.5}
-            fillOpacity={1} fill="url(#sentGrad)" dot={false} isAnimationActive={false} />
+            fillOpacity={1} fill="url(#sentGrad)" dot={false} isAnimationActive={false} connectNulls={false} />
         </AreaChart>
       </ResponsiveContainer>
     </div>

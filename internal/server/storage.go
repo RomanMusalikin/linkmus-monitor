@@ -131,7 +131,7 @@ func SaveMetric(db *sql.DB, p MetricPayload) error {
 	return err
 }
 
-func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
+func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 	rows, err := db.Query(`SELECT DISTINCT node_name FROM metrics`)
 	if err != nil {
 		return nil, err
@@ -315,9 +315,9 @@ func GetLatestNodes(db *sql.DB) ([]NodeSummary, error) {
 			SNMPCPULoad:    snmp.CPULoad,
 			SNMPIfCount:    snmp.IfCount,
 			FSRM:           fsrmList,
-			CPUHistory:     queryCPUHistory(db, name),
-			RAMHistory:     queryRAMHistory(db, name),
-			NetHistory:     queryNetHistory(db, name),
+			CPUHistory:     queryCPUHistory(db, name, full),
+			RAMHistory:     queryRAMHistory(db, name, full),
+			NetHistory:     queryNetHistory(db, name, full),
 		}
 
 		nodes = append(nodes, summary)
@@ -333,84 +333,261 @@ func formatHistoryTime(ts string) string {
 	return ts
 }
 
-func queryCPUHistory(db *sql.DB, name string) []CpuPoint {
+const dayBucketDur = 10 * time.Minute
+
+
+func queryCPUHistory(db *sql.DB, name string, full bool) []CpuPoint {
+	if !full {
+		rows, err := db.Query(
+			`SELECT cpu_usage, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		if err != nil {
+			return nil
+		}
+		defer rows.Close()
+		var temp []struct {
+			v  int
+			ts string
+		}
+		for rows.Next() {
+			var v float64
+			var ts string
+			if err := rows.Scan(&v, &ts); err == nil {
+				temp = append(temp, struct {
+					v  int
+					ts string
+				}{int(v), ts})
+			}
+		}
+		result := make([]CpuPoint, len(temp))
+		for i, r := range temp {
+			v := r.v
+			result[len(temp)-1-i] = CpuPoint{Value: &v, Time: formatHistoryTime(r.ts)}
+		}
+		return result
+	}
+
 	rows, err := db.Query(
-		`SELECT cpu_usage, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		`SELECT cpu_usage, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 
-	type row struct {
-		v  int
-		ts string
-	}
-	var temp []row
+	var vals []float64
+	var times []time.Time
 	for rows.Next() {
 		var v float64
 		var ts string
 		if err := rows.Scan(&v, &ts); err == nil {
-			temp = append(temp, row{int(v), ts})
+			if t, err := time.Parse(time.RFC3339, ts); err == nil {
+				vals = append(vals, v)
+				times = append(times, t)
+			}
 		}
 	}
-	result := make([]CpuPoint, len(temp))
-	for i, r := range temp {
-		result[len(temp)-1-i] = CpuPoint{Value: r.v, Time: formatHistoryTime(r.ts)}
+	if len(vals) == 0 {
+		return nil
+	}
+
+	now := time.Now().Local()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+	type bucket struct{ sum float64; n int }
+	grid := make(map[time.Time]*bucket)
+	for i, t := range times {
+		key := t.Local().Truncate(dayBucketDur)
+		if key.Before(start) {
+			continue
+		}
+		if grid[key] == nil {
+			grid[key] = &bucket{}
+		}
+		grid[key].sum += vals[i]
+		grid[key].n++
+	}
+
+	var result []CpuPoint
+	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
+		label := t.Format("15:04")
+		if b := grid[t]; b != nil {
+			avg := int(b.sum / float64(b.n))
+			result = append(result, CpuPoint{Value: &avg, Time: label})
+		} else {
+			result = append(result, CpuPoint{Value: nil, Time: label})
+		}
 	}
 	return result
 }
 
-func queryRAMHistory(db *sql.DB, name string) []RamPoint {
+func queryRAMHistory(db *sql.DB, name string, full bool) []RamPoint {
+	if !full {
+		rows, err := db.Query(
+			`SELECT ram_usage, ram_total, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		if err != nil {
+			return nil
+		}
+		defer rows.Close()
+		var temp []struct {
+			pct int
+			ts  string
+		}
+		for rows.Next() {
+			var used, total float64
+			var ts string
+			if err := rows.Scan(&used, &total, &ts); err == nil {
+				pct := 0
+				if total > 0 {
+					pct = int(used / total * 100)
+				}
+				temp = append(temp, struct {
+					pct int
+					ts  string
+				}{pct, ts})
+			}
+		}
+		result := make([]RamPoint, len(temp))
+		for i, r := range temp {
+			v := r.pct
+			result[len(temp)-1-i] = RamPoint{Value: &v, Time: formatHistoryTime(r.ts)}
+		}
+		return result
+	}
+
 	rows, err := db.Query(
-		`SELECT ram_usage, ram_total, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		`SELECT ram_usage, ram_total, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 
-	type row struct {
-		pct int
-		ts  string
+	type rec struct {
+		pct float64
+		t   time.Time
 	}
-	var temp []row
+	var all []rec
 	for rows.Next() {
 		var used, total float64
 		var ts string
 		if err := rows.Scan(&used, &total, &ts); err == nil {
-			pct := 0
-			if total > 0 {
-				pct = int(used / total * 100)
+			if t, err := time.Parse(time.RFC3339, ts); err == nil {
+				pct := 0.0
+				if total > 0 {
+					pct = used / total * 100
+				}
+				all = append(all, rec{pct, t})
 			}
-			temp = append(temp, row{pct, ts})
 		}
 	}
-	result := make([]RamPoint, len(temp))
-	for i, r := range temp {
-		result[len(temp)-1-i] = RamPoint{Value: r.pct, Time: formatHistoryTime(r.ts)}
+	if len(all) == 0 {
+		return nil
+	}
+
+	now := time.Now().Local()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+	type bucket struct{ sum float64; n int }
+	grid := make(map[time.Time]*bucket)
+	for _, r := range all {
+		key := r.t.Local().Truncate(dayBucketDur)
+		if key.Before(start) {
+			continue
+		}
+		if grid[key] == nil {
+			grid[key] = &bucket{}
+		}
+		grid[key].sum += r.pct
+		grid[key].n++
+	}
+
+	var result []RamPoint
+	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
+		label := t.Format("15:04")
+		if b := grid[t]; b != nil {
+			avg := int(b.sum / float64(b.n))
+			result = append(result, RamPoint{Value: &avg, Time: label})
+		} else {
+			result = append(result, RamPoint{Value: nil, Time: label})
+		}
 	}
 	return result
 }
 
-func queryNetHistory(db *sql.DB, name string) []NetPoint {
+func queryNetHistory(db *sql.DB, name string, full bool) []NetPoint {
+	if !full {
+		rows, err := db.Query(`
+			SELECT COALESCE(net_bytes_recv,0), COALESCE(net_bytes_sent,0), timestamp
+			FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		if err != nil {
+			return nil
+		}
+		defer rows.Close()
+		var temp []NetPoint
+		for rows.Next() {
+			var recv, sent float64
+			var ts string
+			if err := rows.Scan(&recv, &sent, &ts); err == nil {
+				r, s := recv, sent
+				temp = append(temp, NetPoint{Recv: &r, Sent: &s, Time: formatHistoryTime(ts)})
+			}
+		}
+		result := make([]NetPoint, len(temp))
+		for i, v := range temp {
+			result[len(temp)-1-i] = v
+		}
+		return result
+	}
+
 	rows, err := db.Query(`
-		SELECT COALESCE(net_bytes_recv, 0), COALESCE(net_bytes_sent, 0), timestamp
-		FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		SELECT COALESCE(net_bytes_recv,0), COALESCE(net_bytes_sent,0), timestamp
+		FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
 	if err != nil {
 		return nil
 	}
 	defer rows.Close()
 
-	var temp []NetPoint
+	type rec struct {
+		recv, sent float64
+		t          time.Time
+	}
+	var all []rec
 	for rows.Next() {
 		var recv, sent float64
 		var ts string
 		if err := rows.Scan(&recv, &sent, &ts); err == nil {
-			temp = append(temp, NetPoint{Recv: recv, Sent: sent, Time: formatHistoryTime(ts)})
+			if t, err := time.Parse(time.RFC3339, ts); err == nil {
+				all = append(all, rec{recv, sent, t})
+			}
 		}
 	}
-	result := make([]NetPoint, len(temp))
-	for i, v := range temp {
-		result[len(temp)-1-i] = v
+	if len(all) == 0 {
+		return nil
+	}
+
+	now := time.Now().Local()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+	type bucket struct{ sumR, sumS float64; n int }
+	grid := make(map[time.Time]*bucket)
+	for _, r := range all {
+		key := r.t.Local().Truncate(dayBucketDur)
+		if key.Before(start) {
+			continue
+		}
+		if grid[key] == nil {
+			grid[key] = &bucket{}
+		}
+		grid[key].sumR += r.recv
+		grid[key].sumS += r.sent
+		grid[key].n++
+	}
+
+	var result []NetPoint
+	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
+		label := t.Format("15:04")
+		if b := grid[t]; b != nil {
+			n := float64(b.n)
+			r, s := b.sumR/n, b.sumS/n
+			result = append(result, NetPoint{Recv: &r, Sent: &s, Time: label})
+		} else {
+			result = append(result, NetPoint{Recv: nil, Sent: nil, Time: label})
+		}
 	}
 	return result
 }

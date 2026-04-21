@@ -1,7 +1,13 @@
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
 export default function CpuHistory({ data }) {
-  const chartData = (data || []).map(p => ({ cpu: p.value ?? p.cpu ?? 0, time: p.time ?? '' }));
+  const chartData = (data || []).map(p => ({
+    cpu: p.value != null ? p.value : (p.cpu != null ? p.cpu : null),
+    time: p.time ?? '',
+  }));
+
+  const tickInterval = Math.max(0, Math.floor(chartData.length / 10) - 1);
+  const fmt = chartData.length > 36 ? (t) => t.slice(0, 5) : undefined;
 
   return (
     <div className="h-64 w-full">
@@ -20,7 +26,8 @@ export default function CpuHistory({ data }) {
             fontSize={10}
             tickLine={false}
             axisLine={false}
-            interval="preserveStartEnd"
+            interval={tickInterval}
+            tickFormatter={fmt}
             angle={-35}
             textAnchor="end"
             dy={4}
@@ -36,7 +43,7 @@ export default function CpuHistory({ data }) {
           <Tooltip
             contentStyle={{ backgroundColor: '#1e293b', borderColor: '#475569', color: '#f1f5f9', fontSize: '12px', borderRadius: '0.5rem' }}
             itemStyle={{ color: '#3b82f6' }}
-            formatter={(val) => [`${val}%`, 'CPU']}
+            formatter={(val) => val != null ? [`${val}%`, 'CPU'] : ['—', 'CPU']}
             labelStyle={{ color: '#94a3b8', marginBottom: '2px' }}
           />
           <Area
@@ -48,6 +55,7 @@ export default function CpuHistory({ data }) {
             fill="url(#cpuGradient)"
             dot={false}
             isAnimationActive={false}
+            connectNulls={false}
           />
         </AreaChart>
       </ResponsiveContainer>

@@ -11,8 +11,9 @@ function authHeaders() {
   };
 }
 
-export async function fetchNodes() {
-  const res = await fetch(`${API_BASE}/nodes`, { headers: authHeaders() });
+export async function fetchNodes(full) {
+  const url = full ? `${API_BASE}/nodes?full=true` : `${API_BASE}/nodes`;
+  const res = await fetch(url, { headers: authHeaders() });
   if (res.status === 401) throw Object.assign(new Error('unauthorized'), { status: 401 });
   if (!res.ok) throw new Error('Ошибка получения списка узлов');
   return res.json();

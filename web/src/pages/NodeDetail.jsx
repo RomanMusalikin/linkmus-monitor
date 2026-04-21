@@ -5,13 +5,13 @@ import {
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
   Wifi, MemoryStick, Trash2
 } from 'lucide-react';
-import { deleteNode } from '../lib/api';
+import { deleteNode, fetchNodes } from '../lib/api';
 import { useNodes } from '../hooks/useNodes';
 import CpuGauge from '../components/charts/CpuGauge';
 import CpuHistory from '../components/charts/CpuHistory';
 import NetworkLines from '../components/charts/NetworkLines';
 import ProgressBar from '../components/common/ProgressBar';
-import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
+import { AreaChart, Area, ResponsiveContainer, Tooltip, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 // ─── Утилиты ───────────────────────────────────────────────────────────────
 
@@ -222,6 +222,19 @@ export default function NodeDetail() {
   const { data: nodes, loading, error } = useNodes();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [fullHistory, setFullHistory] = useState(null);
+  const [loadingFull, setLoadingFull] = useState(false);
+
+  async function toggleFullHistory() {
+    if (fullHistory) { setFullHistory(null); return; }
+    setLoadingFull(true);
+    try {
+      const all = await fetchNodes(true);
+      setFullHistory((all || []).find(n => n.name === nodeId) || null);
+    } finally {
+      setLoadingFull(false);
+    }
+  }
 
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
@@ -294,9 +307,22 @@ export default function NodeDetail() {
           </div>
         </div>
 
-        {/* Кнопка удаления — только для offline */}
+        {/* Кнопки в правой части заголовка */}
+        <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+          <button
+            onClick={toggleFullHistory}
+            disabled={loadingFull}
+            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
+              ${fullHistory
+                ? 'bg-violet-500/15 text-violet-400 border-violet-500/30'
+                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-violet-400 hover:border-violet-500/30 hover:bg-violet-500/10'}`}
+          >
+            <TrendingUp className="w-4 h-4" />
+            {loadingFull ? 'Загрузка...' : fullHistory ? 'Скрыть историю' : 'История за сутки'}
+          </button>
+
         {!node.online && (
-          <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+          <div className="flex items-center gap-2">
             {confirmDelete && (
               <button onClick={() => setConfirmDelete(false)}
                 className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-slate-400 hover:bg-slate-600 transition-all border border-slate-600">
@@ -316,6 +342,7 @@ export default function NodeDetail() {
             </button>
           </div>
         )}
+        </div>
       </div>
 
       {/* ── Быстрые показатели ── */}
@@ -719,6 +746,61 @@ export default function NodeDetail() {
         )}
 
       </div>
+
+      {/* ── Полная история наблюдений ── */}
+      {fullHistory && (
+        <div className="mt-6 space-y-5">
+          <div className="flex items-center gap-3">
+            <TrendingUp className="w-4 h-4 text-violet-400" />
+            <span className="text-sm font-semibold text-slate-300">История за последние 24 часа</span>
+            <span className="text-xs text-slate-500">({fullHistory.cpuHistory?.length || 0} точек · интервал 10 мин.)</span>
+          </div>
+
+          <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-5">
+            <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">CPU %</div>
+            <CpuHistory data={fullHistory.cpuHistory || []} />
+          </div>
+
+          <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-5">
+            <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Сетевой трафик</div>
+            <NetworkLines data={fullHistory.netHistory || []} />
+          </div>
+
+          {fullHistory.ramHistory && fullHistory.ramHistory.length > 1 && (() => {
+            const d = fullHistory.ramHistory;
+            const ti = Math.max(0, Math.floor(d.length / 10) - 1);
+            const f = d.length > 36 ? (t) => t.slice(0, 5) : undefined;
+            return (
+              <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-5">
+                <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">RAM %</div>
+                <ResponsiveContainer width="100%" height={160}>
+                  <AreaChart data={d} margin={{ top: 5, right: 8, left: -20, bottom: 28 }}>
+                    <defs>
+                      <linearGradient id="ramGradFull" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
+                    <XAxis dataKey="time" stroke="#475569" fontSize={10} tickLine={false} axisLine={false}
+                      interval={ti} tickFormatter={f} angle={-35} textAnchor="end" dy={4} />
+                    <YAxis stroke="#475569" fontSize={11} tickLine={false} axisLine={false}
+                      domain={[0, 100]} tickFormatter={v => `${v}%`} />
+                    <Tooltip
+                      contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                      formatter={v => [`${v}%`, 'RAM']}
+                      labelStyle={{ color: '#64748b' }}
+                    />
+                    <Area type="monotone" dataKey="value" stroke="#8b5cf6" strokeWidth={2}
+                      fill="url(#ramGradFull)" dot={false} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          })()}
+        </div>
+      )}
+
     </div>
   );
 }

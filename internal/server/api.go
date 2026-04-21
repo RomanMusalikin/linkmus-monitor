@@ -7,23 +7,23 @@ import (
 	"strings"
 )
 
-// CpuPoint — одна точка истории CPU
+// CpuPoint — одна точка истории CPU (Value=nil означает отсутствие данных)
 type CpuPoint struct {
-	Value int    `json:"value"`
+	Value *int   `json:"value"`
 	Time  string `json:"time"`
 }
 
-// RamPoint — одна точка истории RAM (процент)
+// RamPoint — одна точка истории RAM (Value=nil означает отсутствие данных)
 type RamPoint struct {
-	Value int    `json:"value"`
+	Value *int   `json:"value"`
 	Time  string `json:"time"`
 }
 
-// NetPoint — одна точка истории сети (байт/сек)
+// NetPoint — одна точка истории сети (nil означает отсутствие данных)
 type NetPoint struct {
-	Recv float64 `json:"recv"`
-	Sent float64 `json:"sent"`
-	Time string  `json:"time"`
+	Recv *float64 `json:"recv"`
+	Sent *float64 `json:"sent"`
+	Time string   `json:"time"`
 }
 
 // ProcessInfo — информация об одном процессе
@@ -182,7 +182,9 @@ func HandleNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	nodes, err := GetLatestNodes(dbConn)
+	full := r.URL.Query().Get("full") == "true"
+
+	nodes, err := GetLatestNodes(dbConn, full)
 	if err != nil {
 		log.Printf("Ошибка GetLatestNodes: %v", err)
 		http.Error(w, `{"error":"ошибка получения данных"}`, http.StatusInternalServerError)
