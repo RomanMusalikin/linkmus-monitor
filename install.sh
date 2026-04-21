@@ -167,7 +167,7 @@ EOF
   echo ""
   success "Сервер ${BOLD}${LATEST_TAG}${RESET} установлен!"
   echo -e "  Веб-интерфейс: ${BOLD}http://$(hostname -I | awk '{print $1}')${RESET}"
-  echo -e "  Управление:    ${BOLD}mon server start|stop|restart|status|logs${RESET}"
+  echo -e "  Справка:       ${BOLD}mon help${RESET}"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -198,20 +198,21 @@ install_agent_linux() {
   success "Бинарник обновлён: /usr/local/bin/mon-agent"
 
   # Конфиг — только при первой установке, при обновлении не трогаем
-  mkdir -p /opt/mon-agent
-  if [ ! -f /opt/mon-agent/agent-config.yaml ]; then
+  mkdir -p /opt/mon-agent/configs
+  if [ ! -f /opt/mon-agent/configs/agent-config.yaml ]; then
     echo ""
     echo -e "${BOLD}Настройка агента:${RESET}"
     read -rp "  URL сервера [http://10.10.10.10:8080]: " server_url </dev/tty
     server_url="${server_url:-http://10.10.10.10:8080}"
-    read -rp "  Интервал отправки [5s]: " interval </dev/tty
-    interval="${interval:-5s}"
-    cat > /opt/mon-agent/agent-config.yaml <<EOF
+    read -rp "  Интервал отправки в секундах [5]: " interval </dev/tty
+    interval="${interval:-5}"
+    interval="${interval%s}s"
+    cat > /opt/mon-agent/configs/agent-config.yaml <<EOF
 server:
   url: "${server_url}/api/metrics"
   interval: ${interval}
 EOF
-    success "Конфиг создан: /opt/mon-agent/agent-config.yaml"
+    success "Конфиг создан: /opt/mon-agent/configs/agent-config.yaml"
   else
     success "Конфиг сохранён без изменений"
   fi
@@ -247,7 +248,7 @@ EOF
 
   echo ""
   success "Агент ${BOLD}${LATEST_TAG}${RESET} установлен!"
-  echo -e "  Управление: ${BOLD}mon agent start|stop|restart|status|logs${RESET}"
+  echo -e "  Справка:    ${BOLD}mon help${RESET}"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -261,24 +262,42 @@ install_mon_cli() {
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
+help() {
+  echo -e "${BOLD}${CYAN}LinkMus Monitor — управление службами${RESET}"
+  echo ""
+  echo -e "${BOLD}Использование:${RESET} mon <цель> <команда>"
+  echo ""
+  echo -e "${BOLD}Цели:${RESET}"
+  echo "  server   — сервер мониторинга (mon-server)"
+  echo "  agent    — агент сбора метрик (mon-agent)"
+  echo ""
+  echo -e "${BOLD}Команды:${RESET}"
+  echo "  start    — запустить службу"
+  echo "  stop     — остановить службу"
+  echo "  restart  — перезапустить службу"
+  echo "  status   — статус службы"
+  echo "  enable   — включить автозапуск при старте системы"
+  echo "  disable  — выключить автозапуск"
+  echo "  logs     — следить за логами в реальном времени (Ctrl+C для выхода)"
+  echo ""
+  echo -e "${BOLD}Примеры:${RESET}"
+  echo "  mon server start"
+  echo "  mon server status"
+  echo "  mon agent logs"
+  echo "  mon agent enable"
+}
+
 usage() {
-  echo -e "${BOLD}Использование:${RESET} mon <server|agent> <команда>"
-  echo ""
-  echo -e "  ${BOLD}Команды:${RESET}"
-  echo "    start    — запустить службу"
-  echo "    stop     — остановить службу"
-  echo "    restart  — перезапустить службу"
-  echo "    status   — статус службы"
-  echo "    enable   — включить автозапуск"
-  echo "    disable  — выключить автозапуск"
-  echo "    logs     — следить за логами (Ctrl+C для выхода)"
-  echo ""
-  echo -e "  ${BOLD}Примеры:${RESET}"
-  echo "    mon server start"
-  echo "    mon agent logs"
-  echo "    mon server enable"
+  help
   exit 1
 }
+
+[ $# -lt 1 ] && usage
+
+if [ "$1" = "help" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+  help
+  exit 0
+fi
 
 [ $# -lt 2 ] && usage
 
