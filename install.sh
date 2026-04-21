@@ -56,7 +56,7 @@ check_version() {
   if [ -n "$current" ]; then
     if [ "$current" = "$LATEST_TAG" ]; then
       warn "Уже установлена актуальная версия ${BOLD}${current}${RESET}"
-      read -rp "  Всё равно переустановить? [y/N]: " force
+      read -rp "  Всё равно переустановить? [y/N]: " force </dev/tty
       [[ "$force" =~ ^[Yy]$ ]] || { info "Отменено."; exit 0; }
     else
       info "Установлена: ${BOLD}${current}${RESET} → доступна: ${BOLD}${LATEST_TAG}${RESET}"
@@ -162,10 +162,12 @@ EOF
   # Сохраняем версию
   echo "$LATEST_TAG" > "$VERSION_FILE"
 
+  install_mon_cli
+
   echo ""
   success "Сервер ${BOLD}${LATEST_TAG}${RESET} установлен!"
   echo -e "  Веб-интерфейс: ${BOLD}http://$(hostname -I | awk '{print $1}')${RESET}"
-  echo -e "  Логи:          ${BOLD}journalctl -fu mon-server${RESET}"
+  echo -e "  Управление:    ${BOLD}mon server start|stop|restart|status|logs${RESET}"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -200,9 +202,9 @@ install_agent_linux() {
   if [ ! -f /opt/mon-agent/agent-config.yaml ]; then
     echo ""
     echo -e "${BOLD}Настройка агента:${RESET}"
-    read -rp "  URL сервера [http://10.10.10.10:8080]: " server_url
+    read -rp "  URL сервера [http://10.10.10.10:8080]: " server_url </dev/tty
     server_url="${server_url:-http://10.10.10.10:8080}"
-    read -rp "  Интервал отправки [5s]: " interval
+    read -rp "  Интервал отправки [5s]: " interval </dev/tty
     interval="${interval:-5s}"
     cat > /opt/mon-agent/agent-config.yaml <<EOF
 server:
@@ -241,9 +243,91 @@ EOF
   # Сохраняем версию
   echo "$LATEST_TAG" > "$AGENT_VERSION_FILE"
 
+  install_mon_cli
+
   echo ""
   success "Агент ${BOLD}${LATEST_TAG}${RESET} установлен!"
-  echo -e "  Логи: ${BOLD}journalctl -fu mon-agent${RESET}"
+  echo -e "  Управление: ${BOLD}mon agent start|stop|restart|status|logs${RESET}"
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# УСТАНОВКА CLI-ОБЁРТКИ mon
+# ══════════════════════════════════════════════════════════════════════════════
+install_mon_cli() {
+  cat > /usr/local/bin/mon <<'MONSCRIPT'
+#!/usr/bin/env bash
+# LinkMus Monitor — управление службами
+# Использование: mon <server|agent> <команда>
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+
+usage() {
+  echo -e "${BOLD}Использование:${RESET} mon <server|agent> <команда>"
+  echo ""
+  echo -e "  ${BOLD}Команды:${RESET}"
+  echo "    start    — запустить службу"
+  echo "    stop     — остановить службу"
+  echo "    restart  — перезапустить службу"
+  echo "    status   — статус службы"
+  echo "    enable   — включить автозапуск"
+  echo "    disable  — выключить автозапуск"
+  echo "    logs     — следить за логами (Ctrl+C для выхода)"
+  echo ""
+  echo -e "  ${BOLD}Примеры:${RESET}"
+  echo "    mon server start"
+  echo "    mon agent logs"
+  echo "    mon server enable"
+  exit 1
+}
+
+[ $# -lt 2 ] && usage
+
+case "$1" in
+  server) SERVICE="mon-server" ;;
+  agent)  SERVICE="mon-agent" ;;
+  *)
+    echo -e "${RED}Неизвестная цель:${RESET} $1 (используйте 'server' или 'agent')"
+    usage
+    ;;
+esac
+
+case "$2" in
+  start)
+    systemctl start "$SERVICE"
+    echo -e "${GREEN}[OK]${RESET} $SERVICE запущен"
+    ;;
+  stop)
+    systemctl stop "$SERVICE"
+    echo -e "${GREEN}[OK]${RESET} $SERVICE остановлен"
+    ;;
+  restart)
+    systemctl restart "$SERVICE"
+    echo -e "${GREEN}[OK]${RESET} $SERVICE перезапущен"
+    ;;
+  status)
+    systemctl status "$SERVICE" --no-pager
+    ;;
+  enable)
+    systemctl enable "$SERVICE"
+    echo -e "${GREEN}[OK]${RESET} Автозапуск $SERVICE включён"
+    ;;
+  disable)
+    systemctl disable "$SERVICE"
+    echo -e "${GREEN}[OK]${RESET} Автозапуск $SERVICE выключен"
+    ;;
+  logs)
+    echo -e "${CYAN}Логи $SERVICE (Ctrl+C для выхода):${RESET}"
+    journalctl -fu "$SERVICE"
+    ;;
+  *)
+    echo -e "${RED}Неизвестная команда:${RESET} $2"
+    usage
+    ;;
+esac
+MONSCRIPT
+
+  chmod +x /usr/local/bin/mon
+  success "CLI-обёртка установлена: mon server|agent start|stop|restart|status|enable|disable|logs"
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -262,7 +346,7 @@ echo -e "  ${BOLD}1${RESET}) Сервер мониторинга (mon-server + n
 echo -e "  ${BOLD}2${RESET}) Агент — Linux (amd64 / arm64)"
 echo -e "  ${BOLD}3${RESET}) Агент — Windows (инструкция)"
 echo ""
-read -rp "Выбор [1-3]: " choice
+read -rp "Выбор [1-3]: " choice </dev/tty
 
 case "$choice" in
   1) install_server ;;
