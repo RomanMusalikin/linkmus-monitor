@@ -331,6 +331,75 @@ MONSCRIPT
 }
 
 # ══════════════════════════════════════════════════════════════════════════════
+# ДЕИНСТАЛЛЯЦИЯ СЕРВЕРА
+# ══════════════════════════════════════════════════════════════════════════════
+uninstall_server() {
+  echo ""
+  warn "Это удалит mon-server, фронтенд, базу данных и конфиг nginx."
+  read -rp "  Продолжить? [y/N]: " confirm </dev/tty
+  [[ "$confirm" =~ ^[Yy]$ ]] || { info "Отменено."; exit 0; }
+
+  if systemctl is-active --quiet mon-server 2>/dev/null; then
+    systemctl stop mon-server
+    info "Служба mon-server остановлена"
+  fi
+  if systemctl is-enabled --quiet mon-server 2>/dev/null; then
+    systemctl disable mon-server
+  fi
+
+  rm -f /etc/systemd/system/mon-server.service
+  systemctl daemon-reload
+
+  rm -f /usr/local/bin/mon-server
+  rm -rf /opt/linkmus-monitor
+
+  if [ -f /etc/nginx/sites-enabled/linkmus-monitor ]; then
+    rm -f /etc/nginx/sites-enabled/linkmus-monitor
+    rm -f /etc/nginx/sites-available/linkmus-monitor
+    nginx -t && systemctl reload nginx
+    info "Конфиг nginx удалён"
+  fi
+
+  # Удаляем mon только если агент тоже не установлен
+  if [ ! -f /usr/local/bin/mon-agent ]; then
+    rm -f /usr/local/bin/mon
+  fi
+
+  success "Сервер удалён."
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ДЕИНСТАЛЛЯЦИЯ АГЕНТА (Linux)
+# ══════════════════════════════════════════════════════════════════════════════
+uninstall_agent_linux() {
+  echo ""
+  warn "Это удалит mon-agent и его конфиг."
+  read -rp "  Продолжить? [y/N]: " confirm </dev/tty
+  [[ "$confirm" =~ ^[Yy]$ ]] || { info "Отменено."; exit 0; }
+
+  if systemctl is-active --quiet mon-agent 2>/dev/null; then
+    systemctl stop mon-agent
+    info "Служба mon-agent остановлена"
+  fi
+  if systemctl is-enabled --quiet mon-agent 2>/dev/null; then
+    systemctl disable mon-agent
+  fi
+
+  rm -f /etc/systemd/system/mon-agent.service
+  systemctl daemon-reload
+
+  rm -f /usr/local/bin/mon-agent
+  rm -rf /opt/mon-agent
+
+  # Удаляем mon только если сервер тоже не установлен
+  if [ ! -f /usr/local/bin/mon-server ]; then
+    rm -f /usr/local/bin/mon
+  fi
+
+  success "Агент удалён."
+}
+
+# ══════════════════════════════════════════════════════════════════════════════
 # ГЛАВНОЕ МЕНЮ
 # ══════════════════════════════════════════════════════════════════════════════
 echo ""
@@ -341,12 +410,14 @@ echo ""
 
 [ "$(id -u)" -eq 0 ] || error "Запустите от root: sudo bash install.sh"
 
-echo -e "Что установить / обновить?"
-echo -e "  ${BOLD}1${RESET}) Сервер мониторинга (mon-server + nginx)"
-echo -e "  ${BOLD}2${RESET}) Агент — Linux (amd64 / arm64)"
+echo -e "Что сделать?"
+echo -e "  ${BOLD}1${RESET}) Установить / обновить сервер (mon-server + nginx)"
+echo -e "  ${BOLD}2${RESET}) Установить / обновить агент — Linux (amd64 / arm64)"
 echo -e "  ${BOLD}3${RESET}) Агент — Windows (инструкция)"
+echo -e "  ${BOLD}4${RESET}) Удалить сервер"
+echo -e "  ${BOLD}5${RESET}) Удалить агент Linux"
 echo ""
-read -rp "Выбор [1-3]: " choice </dev/tty
+read -rp "Выбор [1-5]: " choice </dev/tty
 
 case "$choice" in
   1) install_server ;;
@@ -360,5 +431,7 @@ case "$choice" in
     echo ""
     echo "  Скрипт сам определит: первая установка или обновление."
     ;;
+  4) uninstall_server ;;
+  5) uninstall_agent_linux ;;
   *) error "Неверный выбор: $choice" ;;
 esac
