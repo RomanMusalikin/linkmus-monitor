@@ -54,6 +54,38 @@ curl -sSL https://raw.githubusercontent.com/RomanMusalikin/linkmus-monitor/main/
 
 ---
 
+## Управление службами
+
+После установки доступна команда `mon`:
+
+```bash
+mon server start|stop|restart   # запуск / остановка / перезапуск
+mon server status                # статус службы
+mon server enable|disable        # автозапуск при старте системы
+mon server logs                  # логи в реальном времени (Ctrl+C для выхода)
+
+mon agent start|stop|restart
+mon agent status
+mon agent enable|disable
+mon agent logs
+
+mon help                         # справка по всем командам
+```
+
+---
+
+## Удаление
+
+Запустите установщик и выберите соответствующий пункт:
+
+```bash
+curl -sSL https://raw.githubusercontent.com/RomanMusalikin/linkmus-monitor/main/install.sh | sudo bash
+# Пункт 4 — Удалить сервер
+# Пункт 5 — Удалить агент Linux
+```
+
+---
+
 ## Установка агента
 
 ### Linux (amd64 / arm64)
@@ -63,7 +95,7 @@ curl -sSL https://raw.githubusercontent.com/RomanMusalikin/linkmus-monitor/main/
 # Выбрать пункт 2 — Агент Linux
 ```
 
-Скрипт спросит URL сервера и интервал отправки, создаст systemd-службу `mon-agent`.
+Скрипт спросит URL сервера и интервал отправки (в секундах), создаст systemd-службу `mon-agent`. Конфиг сохраняется в `/opt/mon-agent/configs/agent-config.yaml`.
 
 ### Windows (amd64)
 
@@ -232,7 +264,7 @@ GOOS=linux GOARCH=amd64 go build -o mon-server ./cmd/server/
 cd web && npm run build  # → web/dist/
 ```
 
-### Конфиг агента (`agent-config.yaml`)
+### Конфиг агента (`/opt/mon-agent/configs/agent-config.yaml`)
 
 ```yaml
 server:

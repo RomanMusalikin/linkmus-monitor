@@ -40,5 +40,4 @@ desktop.ini
 *.swp
 
 # --- Claude Code ---
-# CLAUDE.md намеренно НЕ в ignore — это документация проекта
-.claude/settings.local.json
+.claude/
