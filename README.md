@@ -130,24 +130,35 @@ powershell -ExecutionPolicy Bypass -Command "& { iwr https://raw.githubuserconte
 ```
 linkmus-monitor/
 ├── cmd/
-│   ├── agent/main.go            # точка входа агента
-│   └── server/main.go           # точка входа сервера
+│   ├── agent/
+│   │   └── main.go              # точка входа агента
+│   └── server/
+│       └── main.go              # точка входа сервера
 ├── internal/
 │   ├── agent/
 │   │   ├── agent.go             # цикл сбора и отправки
 │   │   ├── config.go            # загрузка agent-config.yaml
 │   │   └── sender.go            # HTTP POST на сервер
 │   ├── collector/
-│   │   ├── common.go            # общие структуры
-│   │   ├── cpu_{linux,windows}.go
-│   │   ├── memory_{linux,windows}.go
-│   │   ├── disk_{linux,windows}.go
-│   │   ├── network_{linux,windows}.go
-│   │   ├── process_{linux,windows}.go
-│   │   ├── services_{linux,windows}.go
-│   │   ├── temperature_{linux,windows}.go
-│   │   ├── connections_{linux,windows}.go
-│   │   └── fsrm_{linux,windows}.go
+│   │   ├── common.go            # общие структуры и интерфейсы
+│   │   ├── cpu_linux.go
+│   │   ├── cpu_windows.go
+│   │   ├── memory_linux.go
+│   │   ├── memory_windows.go
+│   │   ├── disk_linux.go
+│   │   ├── disk_windows.go
+│   │   ├── network_linux.go
+│   │   ├── network_windows.go
+│   │   ├── process_linux.go
+│   │   ├── process_windows.go
+│   │   ├── services_linux.go
+│   │   ├── services_windows.go
+│   │   ├── temperature_linux.go
+│   │   ├── temperature_windows.go
+│   │   ├── connections_linux.go
+│   │   ├── connections_windows.go
+│   │   ├── fsrm_linux.go
+│   │   └── fsrm_windows.go
 │   └── server/
 │       ├── server.go            # HTTP-роутер, middleware авторизации
 │       ├── api.go               # типы NodeSummary, CpuPoint, NetPoint и т.д.
@@ -158,22 +169,46 @@ linkmus-monitor/
 ├── configs/
 │   └── agent-config.yaml        # пример конфига агента
 ├── web/
+│   ├── index.html
+│   ├── vite.config.js           # прокси /api/* → localhost:8080
+│   ├── tailwind.config.js
+│   ├── postcss.config.js
+│   ├── eslint.config.js
+│   ├── package.json
 │   └── src/
+│       ├── App.jsx              # роутер: / → Dashboard, /node/:id → NodeDetail
+│       ├── main.jsx
+│       ├── index.css
 │       ├── pages/
 │       │   ├── Dashboard.jsx    # карточки всех узлов
 │       │   ├── NodeDetail.jsx   # детальная страница узла
 │       │   └── LoginPage.jsx
 │       ├── components/
-│       │   ├── charts/          # CpuHistory, CpuGauge, NetworkLines, Sparkline
-│       │   ├── cards/           # NodeCard
-│       │   ├── common/          # ProgressBar
-│       │   └── layout/          # Header, Sidebar
+│       │   ├── cards/
+│       │   │   └── NodeCard.jsx
+│       │   ├── charts/
+│       │   │   ├── CpuGauge.jsx
+│       │   │   ├── CpuHistory.jsx
+│       │   │   ├── NetworkLines.jsx
+│       │   │   └── Sparkline.jsx
+│       │   ├── common/
+│       │   │   └── ProgressBar.jsx
+│       │   └── layout/
+│       │       ├── Header.jsx
+│       │       └── Sidebar.jsx
 │       ├── hooks/
 │       │   ├── useNodes.js      # polling каждые 5 сек
-│       │   └── useAutoRefresh.js
-│       └── lib/api.js           # fetchNodes, fetchNodes(full), deleteNode
+│       │   ├── useAutoRefresh.js
+│       │   └── useAuth.js
+│       └── lib/
+│           └── api.js           # fetchNodes, deleteNode, login, logout и т.д.
+├── .github/
+│   └── workflows/
+│       └── release.yml          # CI: сборка и публикация релизов
 ├── install.sh                   # установщик сервера и агента (Linux)
-└── install-agent.ps1            # установщик агента (Windows)
+├── install-agent.ps1            # установщик агента (Windows)
+├── go.mod
+└── go.sum
 ```
 
 ---
