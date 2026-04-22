@@ -83,9 +83,16 @@ type MetricPayload struct {
 }
 
 func Run() {
+	// Пишем логи в файл рядом с exe — работает при запуске как служба Windows
+	exe, _ := os.Executable()
+	logPath := exe[:len(exe)-len(".exe")] + ".log"
+	if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+		log.SetOutput(f)
+	}
+
 	cfg, err := LoadConfig(configPath())
 	if err != nil {
-		log.Fatalf("❌ Ошибка загрузки конфига: %v", err)
+		log.Fatalf("Ошибка загрузки конфига: %v", err)
 	}
 
 	log.Printf("Агент запущен. Сервер: %s, Интервал: %s", cfg.Server.URL, cfg.Server.Interval)
