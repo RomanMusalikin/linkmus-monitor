@@ -15,9 +15,10 @@ func InitDB(filepath string) *sql.DB {
 		log.Fatalf("❌ Ошибка открытия БД: %v", err)
 	}
 
-	// SQLite: один writer, множество readers через WAL
-	db.SetMaxOpenConns(1)
-	db.SetMaxIdleConns(1)
+	// SQLite WAL: несколько читателей работают параллельно без блокировок.
+	// Запись сериализуется самим SQLite, лимит на соединения не нужен.
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(5)
 	db.SetConnMaxLifetime(0)
 
 	pragmas := []string{
@@ -176,6 +177,30 @@ func SaveMetric(db *sql.DB, p MetricPayload) error {
 	return err
 }
 
+// rawNodeRow — промежуточная структура для чтения строки из JOIN-запроса.
+// Нужна чтобы закрыть cursor ДО запуска history-запросов (иначе дедлок при лимите соединений).
+type rawNodeRow struct {
+	name, os_, ip, uptime, bootTime, lastTimestamp string
+	loggedUsers                                     int
+	cpuUsage, cpuUser, cpuSystem                   float64
+	cpuIOwait, cpuSteal, cpuTemp                   float64
+	cpuModel                                        string
+	cpuFreq                                         float64
+	cpuCoresJSON                                    string
+	la1, la5, la15                                  float64
+	ramUsage, ramTotal, ramCached, ramBuffers       float64
+	swapUsed, swapTotal                             float64
+	diskUsage, diskReadSec, diskWriteSec, diskQueue float64
+	disksJSON                                       string
+	rdpRunning, smbRunning                          bool
+	netIface                                        string
+	netRecv, netSent                                float64
+	allIfacesJSON                                   string
+	tcpTotal, tcpEstab, tcpTW                       int
+	processCount                                    int
+	procsJSON, topMemJSON, fsrmJSON                 string
+}
+
 // GetLatestNodes возвращает последние метрики для всех узлов.
 // Использует один JOIN-запрос вместо N+1 для получения актуальных строк.
 func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
@@ -209,126 +234,103 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
 
-	var nodes []NodeSummary
-
+	// Читаем все строки в память и сразу закрываем cursor.
+	// History-запросы запускаются только после этого, чтобы не было дедлока.
+	var raws []rawNodeRow
 	for rows.Next() {
-		var (
-			name, os_, ip, uptime, bootTime, lastTimestamp string
-			loggedUsers                                     int
-			cpuUsage, cpuUser, cpuSystem                   float64
-			cpuIOwait, cpuSteal, cpuTemp                   float64
-			cpuModel                                        string
-			cpuFreq                                         float64
-			cpuCoresJSON                                    string
-			la1, la5, la15                                  float64
-			ramUsage, ramTotal, ramCached, ramBuffers       float64
-			swapUsed, swapTotal                             float64
-			diskUsage, diskReadSec, diskWriteSec, diskQueue float64
-			disksJSON                                       string
-			rdpRunning, smbRunning                          bool
-			netIface                                        string
-			netRecv, netSent                                float64
-			allIfacesJSON                                   string
-			tcpTotal, tcpEstab, tcpTW                       int
-			processCount                                    int
-			procsJSON, topMemJSON, fsrmJSON                 string
-		)
-
-		err := rows.Scan(
-			&name, &os_, &ip, &uptime, &bootTime, &lastTimestamp,
-			&loggedUsers,
-			&cpuUsage, &cpuUser, &cpuSystem,
-			&cpuIOwait, &cpuSteal, &cpuTemp,
-			&cpuModel, &cpuFreq, &cpuCoresJSON,
-			&la1, &la5, &la15,
-			&ramUsage, &ramTotal, &ramCached, &ramBuffers,
-			&swapUsed, &swapTotal,
-			&diskUsage, &diskReadSec, &diskWriteSec, &diskQueue, &disksJSON,
-			&rdpRunning, &smbRunning,
-			&netIface, &netRecv, &netSent, &allIfacesJSON,
-			&tcpTotal, &tcpEstab, &tcpTW,
-			&processCount,
-			&procsJSON, &topMemJSON, &fsrmJSON,
-		)
-		if err != nil {
+		var r rawNodeRow
+		if err := rows.Scan(
+			&r.name, &r.os_, &r.ip, &r.uptime, &r.bootTime, &r.lastTimestamp,
+			&r.loggedUsers,
+			&r.cpuUsage, &r.cpuUser, &r.cpuSystem,
+			&r.cpuIOwait, &r.cpuSteal, &r.cpuTemp,
+			&r.cpuModel, &r.cpuFreq, &r.cpuCoresJSON,
+			&r.la1, &r.la5, &r.la15,
+			&r.ramUsage, &r.ramTotal, &r.ramCached, &r.ramBuffers,
+			&r.swapUsed, &r.swapTotal,
+			&r.diskUsage, &r.diskReadSec, &r.diskWriteSec, &r.diskQueue, &r.disksJSON,
+			&r.rdpRunning, &r.smbRunning,
+			&r.netIface, &r.netRecv, &r.netSent, &r.allIfacesJSON,
+			&r.tcpTotal, &r.tcpEstab, &r.tcpTW,
+			&r.processCount,
+			&r.procsJSON, &r.topMemJSON, &r.fsrmJSON,
+		); err != nil {
 			log.Printf("Ошибка сканирования метрики: %v", err)
 			continue
 		}
+		raws = append(raws, r)
+	}
+	rows.Close() // явно закрываем до history-запросов
 
+	var nodes []NodeSummary
+	for _, r := range raws {
 		online := false
-		lastSeen := lastTimestamp
-		if t, err := time.Parse(time.RFC3339, lastTimestamp); err == nil {
+		lastSeen := r.lastTimestamp
+		if t, err := time.Parse(time.RFC3339, r.lastTimestamp); err == nil {
 			online = time.Since(t) < 30*time.Second
 			lastSeen = t.Local().Format("02.01 15:04:05")
 		}
 
 		var cpuCores []float64
-		json.Unmarshal([]byte(cpuCoresJSON), &cpuCores)
-
+		json.Unmarshal([]byte(r.cpuCoresJSON), &cpuCores)
 		var disks []DiskInfo
-		json.Unmarshal([]byte(disksJSON), &disks)
-
+		json.Unmarshal([]byte(r.disksJSON), &disks)
 		var allIfaces []NetIfaceInfo
-		json.Unmarshal([]byte(allIfacesJSON), &allIfaces)
-
+		json.Unmarshal([]byte(r.allIfacesJSON), &allIfaces)
 		var processes []ProcessInfo
-		json.Unmarshal([]byte(procsJSON), &processes)
-
+		json.Unmarshal([]byte(r.procsJSON), &processes)
 		var topMemProcesses []ProcessInfo
-		json.Unmarshal([]byte(topMemJSON), &topMemProcesses)
-
+		json.Unmarshal([]byte(r.topMemJSON), &topMemProcesses)
 		var fsrmList []FSRMInfo
-		json.Unmarshal([]byte(fsrmJSON), &fsrmList)
+		json.Unmarshal([]byte(r.fsrmJSON), &fsrmList)
 
-		probe := GetProbe(ip)
-		snmp := GetSNMP(ip)
+		probe := GetProbe(r.ip)
+		snmp := GetSNMP(r.ip)
 
-		cpuInt := int(cpuUsage)
-		summary := NodeSummary{
-			Name:     name,
-			OS:       os_,
-			IP:       ip,
+		nodes = append(nodes, NodeSummary{
+			Name:     r.name,
+			OS:       r.os_,
+			IP:       r.ip,
 			Online:   online,
 			LastSeen: lastSeen,
-			Uptime:   uptime,
-			BootTime: bootTime,
+			Uptime:   r.uptime,
+			BootTime: r.bootTime,
 
-			CPU:          cpuInt,
-			CPUUser:      cpuUser,
-			CPUSystem:    cpuSystem,
-			CPUIOwait:    cpuIOwait,
-			CPUSteal:     cpuSteal,
-			CPUTemp:      cpuTemp,
-			CPUModel:     cpuModel,
-			CPUFreqMHz:   cpuFreq,
+			CPU:          int(r.cpuUsage),
+			CPUUser:      r.cpuUser,
+			CPUSystem:    r.cpuSystem,
+			CPUIOwait:    r.cpuIOwait,
+			CPUSteal:     r.cpuSteal,
+			CPUTemp:      r.cpuTemp,
+			CPUModel:     r.cpuModel,
+			CPUFreqMHz:   r.cpuFreq,
 			CPUCores:     cpuCores,
-			LoadAvg1:     la1,
-			LoadAvg5:     la5,
-			LoadAvg15:    la15,
-			RAMUsed:      ramUsage,
-			RAMTotal:     ramTotal,
-			RAMCached:    ramCached,
-			RAMBuffers:   ramBuffers,
-			SwapUsed:     swapUsed,
-			SwapTotal:    swapTotal,
-			DiskUsage:    diskUsage,
-			DiskReadSec:  diskReadSec,
-			DiskWriteSec: diskWriteSec,
-			DiskQueue:    diskQueue,
+			LoadAvg1:     r.la1,
+			LoadAvg5:     r.la5,
+			LoadAvg15:    r.la15,
+			RAMUsed:      r.ramUsage,
+			RAMTotal:     r.ramTotal,
+			RAMCached:    r.ramCached,
+			RAMBuffers:   r.ramBuffers,
+			SwapUsed:     r.swapUsed,
+			SwapTotal:    r.swapTotal,
+			DiskUsage:    r.diskUsage,
+			DiskReadSec:  r.diskReadSec,
+			DiskWriteSec: r.diskWriteSec,
+			DiskQueue:    r.diskQueue,
 			Disks:        disks,
-			RDPRunning:   rdpRunning,
-			SMBRunning:   smbRunning,
-			NetInterface: netIface,
-			NetRecvSec:   netRecv,
-			NetSentSec:   netSent,
+			RDPRunning:   r.rdpRunning,
+			SMBRunning:   r.smbRunning,
+			NetInterface: r.netIface,
+			NetRecvSec:   r.netRecv,
+			NetSentSec:   r.netSent,
 			AllIfaces:    allIfaces,
-			TCPTotal:     tcpTotal,
-			TCPEstablished: tcpEstab,
-			TCPTimeWait:  tcpTW,
-			ProcessCount: processCount,
-			LoggedUsers:  loggedUsers,
+			TCPTotal:     r.tcpTotal,
+			TCPEstablished: r.tcpEstab,
+			TCPTimeWait:  r.tcpTW,
+			ProcessCount: r.processCount,
+			LoggedUsers:  r.loggedUsers,
 			Processes:    processes,
 			TopMemProcesses: topMemProcesses,
 			SSHReachable:   probe.SSHReachable,
@@ -349,12 +351,10 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			SNMPCPULoad:    snmp.CPULoad,
 			SNMPIfCount:    snmp.IfCount,
 			FSRM:           fsrmList,
-			CPUHistory:     queryCPUHistory(db, name, full),
-			RAMHistory:     queryRAMHistory(db, name, full),
-			NetHistory:     queryNetHistory(db, name, full),
-		}
-
-		nodes = append(nodes, summary)
+			CPUHistory:     queryCPUHistory(db, r.name, full),
+			RAMHistory:     queryRAMHistory(db, r.name, full),
+			NetHistory:     queryNetHistory(db, r.name, full),
+		})
 	}
 
 	return nodes, nil
