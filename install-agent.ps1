@@ -17,7 +17,7 @@ $NSSM_URL    = "https://nssm.cc/release/nssm-2.24.zip"
 function Write-Step { Write-Host "[....] $args" -ForegroundColor Cyan }
 function Write-Ok   { Write-Host "[ OK ] $args" -ForegroundColor Green }
 function Write-Warn { Write-Host "[WARN] $args" -ForegroundColor Yellow }
-function Write-Fail { Write-Host "[ERR]  $args" -ForegroundColor Red; exit 1 }
+function Write-Fail { param([string]$msg) Write-Host "[ERR]  $msg" -ForegroundColor Red; exit 1 }
 
 # ── Заголовок ─────────────────────────────────────────────────────────────────
 Write-Host ""
@@ -71,6 +71,10 @@ Write-Step "Распаковка..."
 Expand-Archive -Path $zipPath -DestinationPath $tmpDir -Force
 New-Item -ItemType Directory -Force -Path $INSTALL_DIR | Out-Null
 
+# Ищем exe рекурсивно — архив может содержать подпапку
+$exeFile = Get-ChildItem -Path $tmpDir -Filter "mon-agent.exe" -Recurse | Select-Object -First 1
+if (-not $exeFile) { Write-Fail "mon-agent.exe не найден в архиве" }
+
 # Останавливаем службу перед заменой бинарника
 $svc = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
 if ($svc -and $svc.Status -eq 'Running') {
@@ -79,7 +83,10 @@ if ($svc -and $svc.Status -eq 'Running') {
     Start-Sleep -Seconds 2
 }
 
-Copy-Item "$tmpDir\mon-agent.exe" "$INSTALL_DIR\mon-agent.exe" -Force
+Copy-Item $exeFile.FullName "$INSTALL_DIR\mon-agent.exe" -Force
+if (-not (Test-Path "$INSTALL_DIR\mon-agent.exe")) {
+    Write-Fail "Не удалось скопировать mon-agent.exe в $INSTALL_DIR"
+}
 Write-Ok "Бинарник обновлён: $INSTALL_DIR\mon-agent.exe"
 
 # ── Конфиг — только при первой установке ─────────────────────────────────────
@@ -111,10 +118,17 @@ if (-not $nssmExe) {
     } else {
         Write-Step "NSSM не найден, загружаем..."
         $nssmZip = "$tmpDir\nssm.zip"
-        Invoke-WebRequest -Uri $NSSM_URL -OutFile $nssmZip -UseBasicParsing
+        try {
+            Invoke-WebRequest -Uri $NSSM_URL -OutFile $nssmZip -UseBasicParsing
+        } catch {
+            Write-Fail "Не удалось загрузить NSSM: $_"
+        }
         Expand-Archive -Path $nssmZip -DestinationPath $tmpDir -Force
-        $nssmExe = (Get-ChildItem "$tmpDir\nssm-*\win64\nssm.exe" | Select-Object -First 1).FullName
-        Copy-Item $nssmExe $nssmLocal -Force
+        # Выбираем win64 или win32 в зависимости от разрядности ОС
+        $arch = if ([Environment]::Is64BitOperatingSystem) { "win64" } else { "win32" }
+        $nssmFound = Get-ChildItem "$tmpDir\nssm-*\$arch\nssm.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $nssmFound) { Write-Fail "nssm.exe не найден в архиве (arch=$arch)" }
+        Copy-Item $nssmFound.FullName $nssmLocal -Force
         $nssmExe = $nssmLocal
         Write-Ok "NSSM: $nssmExe"
     }
@@ -134,9 +148,15 @@ if (-not $existing) {
     Write-Ok "Служба зарегистрирована"
 }
 
-& $nssmExe start $SERVICE_NAME 2>$null
-if ($LASTEXITCODE -ne 0) {
-    Start-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
+# Запускаем или перезапускаем службу
+$svcCurrent = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
+if ($svcCurrent -and $svcCurrent.Status -eq 'Running') {
+    & $nssmExe restart $SERVICE_NAME 2>&1 | Out-Null
+} else {
+    & $nssmExe start $SERVICE_NAME 2>&1 | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Start-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
+    }
 }
 Write-Ok "Служба $SERVICE_NAME запущена"
 
