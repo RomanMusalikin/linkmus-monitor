@@ -83,7 +83,7 @@ type MetricPayload struct {
 }
 
 func Run() {
-	cfg, err := LoadConfig("configs/agent-config.yaml")
+	cfg, err := LoadConfig(configPath())
 	if err != nil {
 		log.Fatalf("❌ Ошибка загрузки конфига: %v", err)
 	}

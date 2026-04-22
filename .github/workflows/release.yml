@@ -46,12 +46,22 @@ jobs:
         run: |
           CGO_ENABLED=0 GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o dist/mon-agent-linux-arm64 ./cmd/agent/
 
+      - name: Download NSSM for Windows ZIP
+        run: |
+          curl -L https://nssm.cc/release/nssm-2.24.zip -o /tmp/nssm.zip
+          unzip /tmp/nssm.zip -d /tmp/nssm
+          cp /tmp/nssm/nssm-2.24/win64/nssm.exe dist/nssm.exe
+
       - name: Package server with frontend
         run: |
           cp -r web/dist dist/web-dist
           cd dist
           tar czf mon-server-linux-amd64.tar.gz mon-server web-dist
-          zip -r mon-agent-windows-amd64.zip mon-agent.exe
+
+      - name: Package Windows agent (exe + installer + nssm)
+        run: |
+          cd dist
+          zip mon-agent-windows-amd64.zip mon-agent.exe nssm.exe ../install-agent.ps1
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
