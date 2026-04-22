@@ -1,10 +1,13 @@
 package server
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log"
 	"net/http"
 	"strings"
+	"sync"
+	"time"
 )
 
 // CpuPoint — одна точка истории CPU (Value=nil означает отсутствие данных)
@@ -71,7 +74,6 @@ type NodeSummary struct {
 	LastSeen string `json:"lastSeen"`
 	Uptime   string `json:"uptime"`
 	BootTime string `json:"bootTime"`
-
 
 	// CPU
 	CPU        int       `json:"cpu"`
@@ -153,6 +155,45 @@ type NodeSummary struct {
 	NetHistory []NetPoint `json:"netHistory"`
 }
 
+// nodesCache — кэш результата GetLatestNodes(full=false).
+// Обновляется фоном каждые 10 секунд. Все запросы дашборда отвечают мгновенно из кэша.
+var (
+	nodesCacheMu   sync.RWMutex
+	nodesCacheData []NodeSummary
+	nodesCacheAge  time.Time
+)
+
+// StartNodesCache запускает фоновое обновление кэша узлов.
+func StartNodesCache(db *sql.DB) {
+	refresh := func() {
+		nodes, err := GetLatestNodes(db, false)
+		if err != nil {
+			log.Printf("⚠️  Кэш узлов: %v", err)
+			return
+		}
+		nodesCacheMu.Lock()
+		nodesCacheData = nodes
+		nodesCacheAge = time.Now()
+		nodesCacheMu.Unlock()
+	}
+
+	// Первое заполнение — до того как придут запросы
+	refresh()
+
+	go func() {
+		for {
+			time.Sleep(10 * time.Second)
+			refresh()
+		}
+	}()
+}
+
+func getCachedNodes() ([]NodeSummary, time.Time) {
+	nodesCacheMu.RLock()
+	defer nodesCacheMu.RUnlock()
+	return nodesCacheData, nodesCacheAge
+}
+
 // HandleNodeDelete — DELETE /api/nodes/{name}
 func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
@@ -173,6 +214,8 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 // HandleNodes — GET /api/nodes
+// При full=false возвращает данные из кэша (обновляется каждые 10 сек).
+// При full=true (страница узла с суточными графиками) — запрос к БД.
 func HandleNodes(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -184,11 +227,19 @@ func HandleNodes(w http.ResponseWriter, r *http.Request) {
 
 	full := r.URL.Query().Get("full") == "true"
 
-	nodes, err := GetLatestNodes(dbConn, full)
-	if err != nil {
-		log.Printf("Ошибка GetLatestNodes: %v", err)
-		http.Error(w, `{"error":"ошибка получения данных"}`, http.StatusInternalServerError)
-		return
+	var nodes []NodeSummary
+
+	if full {
+		var err error
+		nodes, err = GetLatestNodes(dbConn, true)
+		if err != nil {
+			log.Printf("Ошибка GetLatestNodes(full): %v", err)
+			http.Error(w, `{"error":"ошибка получения данных"}`, http.StatusInternalServerError)
+			return
+		}
+	} else {
+		cached, _ := getCachedNodes()
+		nodes = cached
 	}
 
 	if nodes == nil {

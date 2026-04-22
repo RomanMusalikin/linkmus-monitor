@@ -15,6 +15,22 @@ func InitDB(filepath string) *sql.DB {
 		log.Fatalf("❌ Ошибка открытия БД: %v", err)
 	}
 
+	// SQLite: один writer, множество readers через WAL
+	db.SetMaxOpenConns(1)
+	db.SetMaxIdleConns(1)
+	db.SetConnMaxLifetime(0)
+
+	pragmas := []string{
+		`PRAGMA journal_mode=WAL`,
+		`PRAGMA synchronous=NORMAL`,
+		`PRAGMA cache_size=-32000`,
+		`PRAGMA temp_store=MEMORY`,
+		`PRAGMA mmap_size=268435456`,
+	}
+	for _, p := range pragmas {
+		db.Exec(p)
+	}
+
 	_, err = db.Exec(`
 	CREATE TABLE IF NOT EXISTS users (
 		id       INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -61,8 +77,8 @@ func InitDB(filepath string) *sql.DB {
 	return db
 }
 
-// MigrateDB добавляет новые колонки к существующей таблице metrics.
-// Ошибки игнорируются — колонка может уже существовать.
+// MigrateDB добавляет новые колонки и индексы.
+// Ошибки ALTER TABLE игнорируются — колонка может уже существовать.
 func MigrateDB(db *sql.DB) {
 	cols := []string{
 		`ALTER TABLE metrics ADD COLUMN cpu_user        REAL    DEFAULT 0`,
@@ -101,6 +117,35 @@ func MigrateDB(db *sql.DB) {
 	for _, stmt := range cols {
 		db.Exec(stmt)
 	}
+
+	// Индексы: критически важны для производительности при большом числе узлов
+	indexes := []string{
+		`CREATE INDEX IF NOT EXISTS idx_metrics_node_ts ON metrics(node_name, timestamp)`,
+		`CREATE INDEX IF NOT EXISTS idx_metrics_ip      ON metrics(ip)`,
+		`CREATE INDEX IF NOT EXISTS idx_metrics_ts      ON metrics(timestamp)`,
+	}
+	for _, stmt := range indexes {
+		if _, err := db.Exec(stmt); err != nil {
+			log.Printf("⚠️  Индекс: %v", err)
+		}
+	}
+}
+
+// StartDataCleanup запускает фоновую очистку метрик старше 25 часов.
+func StartDataCleanup(db *sql.DB) {
+	go func() {
+		for {
+			time.Sleep(time.Hour)
+			res, err := db.Exec(`DELETE FROM metrics WHERE timestamp < datetime('now', '-25 hours')`)
+			if err != nil {
+				log.Printf("⚠️  Очистка данных: %v", err)
+				continue
+			}
+			if n, _ := res.RowsAffected(); n > 0 {
+				log.Printf("🗑️  Очистка: удалено %d устаревших записей", n)
+			}
+		}
+	}()
 }
 
 func SaveMetric(db *sql.DB, p MetricPayload) error {
@@ -131,87 +176,87 @@ func SaveMetric(db *sql.DB, p MetricPayload) error {
 	return err
 }
 
+// GetLatestNodes возвращает последние метрики для всех узлов.
+// Использует один JOIN-запрос вместо N+1 для получения актуальных строк.
 func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
-	rows, err := db.Query(`SELECT DISTINCT node_name FROM metrics`)
+	rows, err := db.Query(`
+		SELECT
+			m.node_name, m.os, m.ip, m.uptime, COALESCE(m.boot_time,''), m.timestamp,
+			COALESCE(m.logged_users,0),
+			m.cpu_usage, COALESCE(m.cpu_user,0), COALESCE(m.cpu_system,0),
+			COALESCE(m.cpu_iowait,0), COALESCE(m.cpu_steal,0), COALESCE(m.cpu_temp,0),
+			COALESCE(m.cpu_model,''), COALESCE(m.cpu_freq_mhz,0), COALESCE(m.cpu_cores_json,'[]'),
+			COALESCE(m.load_avg_1,0), COALESCE(m.load_avg_5,0), COALESCE(m.load_avg_15,0),
+			m.ram_usage, m.ram_total, COALESCE(m.ram_cached,0), COALESCE(m.ram_buffers,0),
+			COALESCE(m.swap_used,0), COALESCE(m.swap_total,0),
+			m.disk_usage, COALESCE(m.disk_read_sec,0), COALESCE(m.disk_write_sec,0),
+			COALESCE(m.disk_queue,0), COALESCE(m.disks_json,'[]'),
+			m.rdp_running, m.smb_running,
+			COALESCE(m.net_interface,''), COALESCE(m.net_bytes_recv,0), COALESCE(m.net_bytes_sent,0),
+			COALESCE(m.all_ifaces_json,'[]'),
+			COALESCE(m.tcp_total,0), COALESCE(m.tcp_established,0), COALESCE(m.tcp_timewait,0),
+			COALESCE(m.process_count,0),
+			COALESCE(m.processes_json,'[]'), COALESCE(m.top_mem_json,'[]'),
+			COALESCE(m.fsrm_json,'[]')
+		FROM metrics m
+		INNER JOIN (
+			SELECT node_name, MAX(timestamp) AS ts
+			FROM metrics
+			GROUP BY node_name
+		) latest ON m.node_name = latest.node_name AND m.timestamp = latest.ts
+		ORDER BY m.node_name
+	`)
 	if err != nil {
 		return nil, err
 	}
-	var nodeNames []string
-	for rows.Next() {
-		var name string
-		if err := rows.Scan(&name); err == nil {
-			nodeNames = append(nodeNames, name)
-		}
-	}
-	rows.Close()
+	defer rows.Close()
 
 	var nodes []NodeSummary
 
-	for _, name := range nodeNames {
+	for rows.Next() {
 		var (
-			lastTimestamp                       string
-			cpuUsage                            float64
-			cpuUser, cpuSystem                  sql.NullFloat64
-			cpuIOwait, cpuSteal, cpuTemp        sql.NullFloat64
-			cpuModel                            sql.NullString
-			cpuFreq                             sql.NullFloat64
-			cpuCoresJSON                        sql.NullString
-			la1, la5, la15                      sql.NullFloat64
-			ramUsage, ramTotal                  float64
-			ramCached, ramBuffers               sql.NullFloat64
-			swapUsed, swapTotal                 sql.NullFloat64
-			diskUsage                           float64
-			diskReadSec, diskWriteSec           sql.NullFloat64
-			diskQueue                           sql.NullFloat64
-			disksJSON                           sql.NullString
-			fsrmJSON                            sql.NullString
-			rdpRunning, smbRunning              bool
-			os_, ip, uptime                     string
-			bootTime                            sql.NullString
-			netIface                            sql.NullString
-			netRecv, netSent                    sql.NullFloat64
-			allIfacesJSON                       sql.NullString
-			tcpTotal, tcpEstab, tcpTW           sql.NullInt64
-			processCount, loggedUsers           sql.NullInt64
-			procsJSON, topMemJSON               sql.NullString
+			name, os_, ip, uptime, bootTime, lastTimestamp string
+			loggedUsers                                     int
+			cpuUsage, cpuUser, cpuSystem                   float64
+			cpuIOwait, cpuSteal, cpuTemp                   float64
+			cpuModel                                        string
+			cpuFreq                                         float64
+			cpuCoresJSON                                    string
+			la1, la5, la15                                  float64
+			ramUsage, ramTotal, ramCached, ramBuffers       float64
+			swapUsed, swapTotal                             float64
+			diskUsage, diskReadSec, diskWriteSec, diskQueue float64
+			disksJSON                                       string
+			rdpRunning, smbRunning                          bool
+			netIface                                        string
+			netRecv, netSent                                float64
+			allIfacesJSON                                   string
+			tcpTotal, tcpEstab, tcpTW                       int
+			processCount                                    int
+			procsJSON, topMemJSON, fsrmJSON                 string
 		)
 
-		err := db.QueryRow(`
-			SELECT
-				timestamp,
-				cpu_usage, cpu_user, cpu_system, cpu_iowait, cpu_steal, cpu_temp,
-				cpu_model, cpu_freq_mhz, cpu_cores_json,
-				load_avg_1, load_avg_5, load_avg_15,
-				ram_usage, ram_total, ram_cached, ram_buffers, swap_used, swap_total,
-				disk_usage, disk_read_sec, disk_write_sec, COALESCE(disk_queue,0), disks_json,
-				rdp_running, smb_running,
-				os, ip, uptime, boot_time,
-				net_interface, net_bytes_recv, net_bytes_sent, all_ifaces_json,
-				tcp_total, tcp_established, tcp_timewait,
-				process_count, logged_users,
-				processes_json, top_mem_json, COALESCE(fsrm_json,'[]')
-			FROM metrics
-			WHERE node_name = ?
-			ORDER BY timestamp DESC LIMIT 1`, name).Scan(
-			&lastTimestamp,
-			&cpuUsage, &cpuUser, &cpuSystem, &cpuIOwait, &cpuSteal, &cpuTemp,
+		err := rows.Scan(
+			&name, &os_, &ip, &uptime, &bootTime, &lastTimestamp,
+			&loggedUsers,
+			&cpuUsage, &cpuUser, &cpuSystem,
+			&cpuIOwait, &cpuSteal, &cpuTemp,
 			&cpuModel, &cpuFreq, &cpuCoresJSON,
 			&la1, &la5, &la15,
-			&ramUsage, &ramTotal, &ramCached, &ramBuffers, &swapUsed, &swapTotal,
+			&ramUsage, &ramTotal, &ramCached, &ramBuffers,
+			&swapUsed, &swapTotal,
 			&diskUsage, &diskReadSec, &diskWriteSec, &diskQueue, &disksJSON,
 			&rdpRunning, &smbRunning,
-			&os_, &ip, &uptime, &bootTime,
 			&netIface, &netRecv, &netSent, &allIfacesJSON,
 			&tcpTotal, &tcpEstab, &tcpTW,
-			&processCount, &loggedUsers,
+			&processCount,
 			&procsJSON, &topMemJSON, &fsrmJSON,
 		)
 		if err != nil {
-			log.Printf("Ошибка получения метрики для %s: %v", name, err)
+			log.Printf("Ошибка сканирования метрики: %v", err)
 			continue
 		}
 
-		// Онлайн-статус: последняя метрика не старше 30 секунд
 		online := false
 		lastSeen := lastTimestamp
 		if t, err := time.Parse(time.RFC3339, lastTimestamp); err == nil {
@@ -219,82 +264,71 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			lastSeen = t.Local().Format("02.01 15:04:05")
 		}
 
-		// Парсим JSON-поля
 		var cpuCores []float64
-		if cpuCoresJSON.Valid && cpuCoresJSON.String != "" && cpuCoresJSON.String != "null" {
-			json.Unmarshal([]byte(cpuCoresJSON.String), &cpuCores)
-		}
+		json.Unmarshal([]byte(cpuCoresJSON), &cpuCores)
 
 		var disks []DiskInfo
-		if disksJSON.Valid && disksJSON.String != "" && disksJSON.String != "null" {
-			json.Unmarshal([]byte(disksJSON.String), &disks)
-		}
+		json.Unmarshal([]byte(disksJSON), &disks)
 
 		var allIfaces []NetIfaceInfo
-		if allIfacesJSON.Valid && allIfacesJSON.String != "" && allIfacesJSON.String != "null" {
-			json.Unmarshal([]byte(allIfacesJSON.String), &allIfaces)
-		}
+		json.Unmarshal([]byte(allIfacesJSON), &allIfaces)
 
 		var processes []ProcessInfo
-		if procsJSON.Valid && procsJSON.String != "" && procsJSON.String != "null" {
-			json.Unmarshal([]byte(procsJSON.String), &processes)
-		}
+		json.Unmarshal([]byte(procsJSON), &processes)
 
 		var topMemProcesses []ProcessInfo
-		if topMemJSON.Valid && topMemJSON.String != "" && topMemJSON.String != "null" {
-			json.Unmarshal([]byte(topMemJSON.String), &topMemProcesses)
-		}
+		json.Unmarshal([]byte(topMemJSON), &topMemProcesses)
 
 		var fsrmList []FSRMInfo
-		if fsrmJSON.Valid && fsrmJSON.String != "" && fsrmJSON.String != "null" {
-			json.Unmarshal([]byte(fsrmJSON.String), &fsrmList)
-		}
+		json.Unmarshal([]byte(fsrmJSON), &fsrmList)
 
 		probe := GetProbe(ip)
 		snmp := GetSNMP(ip)
-		summary := NodeSummary{
-			Name:         name,
-			OS:           os_,
-			IP:           ip,
-			Online:       online,
-			LastSeen:     lastSeen,
-			Uptime:       uptime,
-			BootTime:     bootTime.String,
 
-			CPU:          int(cpuUsage),
-			CPUUser:      cpuUser.Float64,
-			CPUSystem:    cpuSystem.Float64,
-			CPUIOwait:    cpuIOwait.Float64,
-			CPUSteal:     cpuSteal.Float64,
-			CPUTemp:      cpuTemp.Float64,
-			CPUModel:     cpuModel.String,
-			CPUFreqMHz:   cpuFreq.Float64,
+		cpuInt := int(cpuUsage)
+		summary := NodeSummary{
+			Name:     name,
+			OS:       os_,
+			IP:       ip,
+			Online:   online,
+			LastSeen: lastSeen,
+			Uptime:   uptime,
+			BootTime: bootTime,
+
+			CPU:          cpuInt,
+			CPUUser:      cpuUser,
+			CPUSystem:    cpuSystem,
+			CPUIOwait:    cpuIOwait,
+			CPUSteal:     cpuSteal,
+			CPUTemp:      cpuTemp,
+			CPUModel:     cpuModel,
+			CPUFreqMHz:   cpuFreq,
 			CPUCores:     cpuCores,
-			LoadAvg1:     la1.Float64,
-			LoadAvg5:     la5.Float64,
-			LoadAvg15:    la15.Float64,
+			LoadAvg1:     la1,
+			LoadAvg5:     la5,
+			LoadAvg15:    la15,
 			RAMUsed:      ramUsage,
 			RAMTotal:     ramTotal,
-			RAMCached:    ramCached.Float64,
-			RAMBuffers:   ramBuffers.Float64,
-			SwapUsed:     swapUsed.Float64,
-			SwapTotal:    swapTotal.Float64,
+			RAMCached:    ramCached,
+			RAMBuffers:   ramBuffers,
+			SwapUsed:     swapUsed,
+			SwapTotal:    swapTotal,
 			DiskUsage:    diskUsage,
-			DiskReadSec:  diskReadSec.Float64,
-			DiskWriteSec: diskWriteSec.Float64,
-			DiskQueue:    diskQueue.Float64,
+			DiskReadSec:  diskReadSec,
+			DiskWriteSec: diskWriteSec,
+			DiskQueue:    diskQueue,
 			Disks:        disks,
 			RDPRunning:   rdpRunning,
 			SMBRunning:   smbRunning,
-			NetInterface: netIface.String,
-			NetRecvSec:   netRecv.Float64,
-			NetSentSec:   netSent.Float64,
+			NetInterface: netIface,
+			NetRecvSec:   netRecv,
+			NetSentSec:   netSent,
 			AllIfaces:    allIfaces,
-			TCPTotal:     int(tcpTotal.Int64),
-			TCPEstablished: int(tcpEstab.Int64),
-			TCPTimeWait:  int(tcpTW.Int64),
-			ProcessCount: int(processCount.Int64),
-			LoggedUsers:  int(loggedUsers.Int64),
+			TCPTotal:     tcpTotal,
+			TCPEstablished: tcpEstab,
+			TCPTimeWait:  tcpTW,
+			ProcessCount: processCount,
+			LoggedUsers:  loggedUsers,
 			Processes:    processes,
 			TopMemProcesses: topMemProcesses,
 			SSHReachable:   probe.SSHReachable,
@@ -334,7 +368,6 @@ func formatHistoryTime(ts string) string {
 }
 
 const dayBucketDur = 10 * time.Minute
-
 
 func queryCPUHistory(db *sql.DB, name string, full bool) []CpuPoint {
 	if !full {

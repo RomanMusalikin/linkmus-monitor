@@ -96,6 +96,8 @@ func Run() {
 
 	StartProber(dbConn)
 	StartSNMPPoller(dbConn)
+	StartNodesCache(dbConn)
+	StartDataCleanup(dbConn)
 
 	// Агент — без авторизации
 	http.HandleFunc("/api/metrics", handleMetrics)

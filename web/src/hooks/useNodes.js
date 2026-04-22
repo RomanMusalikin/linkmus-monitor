@@ -4,5 +4,5 @@ import useAutoRefresh from './useAutoRefresh';
 
 export function useNodes() {
   const fetcher = useCallback(() => fetchNodes(), []);
-  return useAutoRefresh(fetcher, 5000);
+  return useAutoRefresh(fetcher, 10000);
 }
