@@ -16,14 +16,17 @@ func HasUsers(db *sql.DB) (bool, error) {
 	return count > 0, err
 }
 
-// RegisterUser создаёт пользователя с bcrypt-хэшем пароля
-func RegisterUser(db *sql.DB, login, password string) error {
+// RegisterUser создаёт пользователя с bcrypt-хэшем пароля, возвращает ID нового пользователя.
+func RegisterUser(db *sql.DB, login, password string) (int64, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
-		return err
+		return 0, err
 	}
-	_, err = db.Exec(`INSERT INTO users (login, password) VALUES (?, ?)`, login, string(hash))
-	return err
+	res, err := db.Exec(`INSERT INTO users (login, password) VALUES (?, ?)`, login, string(hash))
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
 }
 
 // AuthenticateUser проверяет логин/пароль, возвращает ID пользователя

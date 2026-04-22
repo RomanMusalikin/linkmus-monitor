@@ -164,6 +164,7 @@ var (
 )
 
 // StartNodesCache запускает фоновое обновление кэша узлов.
+// Первый refresh — асинхронный, чтобы не блокировать старт HTTP-сервера.
 func StartNodesCache(db *sql.DB) {
 	refresh := func() {
 		nodes, err := GetLatestNodes(db, false)
@@ -177,10 +178,8 @@ func StartNodesCache(db *sql.DB) {
 		nodesCacheMu.Unlock()
 	}
 
-	// Первое заполнение — до того как придут запросы
-	refresh()
-
 	go func() {
+		refresh()
 		for {
 			time.Sleep(10 * time.Second)
 			refresh()

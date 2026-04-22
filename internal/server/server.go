@@ -195,17 +195,13 @@ func handleAuthRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := RegisterUser(dbConn, body.Login, body.Password); err != nil {
+	userID, err := RegisterUser(dbConn, body.Login, body.Password)
+	if err != nil {
 		log.Printf("❌ Ошибка регистрации: %v", err)
 		http.Error(w, `{"error":"registration failed"}`, http.StatusInternalServerError)
 		return
 	}
 
-	userID, err := AuthenticateUser(dbConn, body.Login, body.Password)
-	if err != nil {
-		http.Error(w, `{"error":"auth after register failed"}`, http.StatusInternalServerError)
-		return
-	}
 	token, err := CreateSession(dbConn, userID)
 	if err != nil {
 		http.Error(w, `{"error":"session failed"}`, http.StatusInternalServerError)
