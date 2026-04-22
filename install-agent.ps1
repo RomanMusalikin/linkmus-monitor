@@ -98,7 +98,8 @@ server:
 }
 
 # ── NSSM ──────────────────────────────────────────────────────────────────────
-$nssmExe = (Get-Command nssm -ErrorAction SilentlyContinue)?.Source
+$nssmCmd = Get-Command nssm -ErrorAction SilentlyContinue
+$nssmExe = if ($nssmCmd) { $nssmCmd.Source } else { $null }
 if (-not $nssmExe) {
     $nssmLocal = "$INSTALL_DIR\nssm.exe"
     if (Test-Path $nssmLocal) {
