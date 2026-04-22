@@ -3,6 +3,10 @@
 
 #Requires -RunAsAdministrator
 
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+$OutputEncoding = [System.Text.Encoding]::UTF8
+chcp 65001 | Out-Null
+
 $REPO        = "RomanMusalikin/linkmus-monitor"
 $INSTALL_DIR = "C:\mon-agent"
 $CONFIG_FILE = "$INSTALL_DIR\agent-config.yaml"
