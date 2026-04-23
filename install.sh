@@ -1,108 +1,92 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ─────────────────────────────────────────────────────────────────────────────
-# LinkMus Monitor — установщик / обновлятор
-# Использование: curl -sSL https://raw.githubusercontent.com/RomanMusalikin/linkmus-monitor/main/install.sh | sudo bash
-# ─────────────────────────────────────────────────────────────────────────────
-
 REPO="RomanMusalikin/linkmus-monitor"
 GITHUB_API="https://api.github.com/repos/${REPO}/releases/latest"
-VERSION_FILE="/opt/linkmus-monitor/.version"
-AGENT_VERSION_FILE="/opt/mon-agent/.version"
+
+SERVER_BIN="/usr/local/bin/mon-server"
+SERVER_DIR="/opt/linkmus-monitor"
+SERVER_DATA="$SERVER_DIR/data"
+SERVER_WEB="$SERVER_DIR/web"
+SERVER_VERSION="$SERVER_DIR/.version"
+
+AGENT_DIR="/opt/mon-agent"
+AGENT_BIN="$AGENT_DIR/mon-agent"
+AGENT_CFG="$AGENT_DIR/agent-config.yaml"
+AGENT_VERSION="$AGENT_DIR/.version"
 
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
 info()    { echo -e "${CYAN}[INFO]${RESET} $*"; }
-success() { echo -e "${GREEN}[OK]${RESET}   $*"; }
+ok()      { echo -e "${GREEN}[ OK ]${RESET} $*"; }
 warn()    { echo -e "${YELLOW}[WARN]${RESET} $*"; }
-error()   { echo -e "${RED}[ERR]${RESET}  $*" >&2; exit 1; }
-
-require() { command -v "$1" &>/dev/null || error "Требуется '$1', но он не установлен"; }
+die()     { echo -e "${RED}[ERR]${RESET}  $*" >&2; exit 1; }
+confirm() { read -rp "$1 [y/N]: " _c </dev/tty; [[ "$_c" =~ ^[Yy]$ ]]; }
+require() { command -v "$1" &>/dev/null || die "Требуется '$1', но не установлен"; }
 
 detect_arch() {
   case "$(uname -m)" in
-    x86_64|amd64)   echo "amd64" ;;
-    aarch64|arm64)  echo "arm64" ;;
-    *) error "Неподдерживаемая архитектура: $(uname -m)" ;;
+    x86_64|amd64)  echo "amd64" ;;
+    aarch64|arm64) echo "arm64" ;;
+    *) die "Неподдерживаемая архитектура: $(uname -m)" ;;
   esac
 }
 
-# Возвращает tag_name и asset URL последнего релиза
-fetch_release_info() {
-  local name="$1"
+fetch_latest() {
+  local filter="$1"
   require curl
-  local json; json=$(curl -fsSL "$GITHUB_API")
+  local json
+  json=$(curl -fsSL "$GITHUB_API")
   LATEST_TAG=$(echo "$json" | grep -o '"tag_name": *"[^"]*"' | head -1 | grep -o '"[^"]*"$' | tr -d '"')
-  ASSET_URL=$(echo "$json" \
-    | grep -o "\"browser_download_url\": *\"[^\"]*${name}[^\"]*\"" \
-    | head -1 | grep -o 'https://[^"]*')
-  [ -n "$LATEST_TAG" ] || error "Не удалось получить версию из GitHub"
-  [ -n "$ASSET_URL"  ] || error "Не найден артефакт '${name}' в релизе ${LATEST_TAG}"
+  ASSET_URL=$(echo "$json" | grep -o "\"browser_download_url\": *\"[^\"]*${filter}[^\"]*\"" | head -1 | grep -o 'https://[^"]*')
+  [ -n "$LATEST_TAG" ] || die "Не удалось получить версию из GitHub"
+  [ -n "$ASSET_URL"  ] || die "Артефакт '${filter}' не найден в релизе ${LATEST_TAG}"
 }
 
-download() {
-  local url="$1" dest="$2"
-  info "Загрузка $(basename "$dest") ..."
-  curl -fsSL --progress-bar -o "$dest" "$url" || error "Не удалось загрузить $url"
-}
-
-# ── Проверяем: установлен ли уже компонент, и нужно ли обновление ─────────────
-check_version() {
-  local version_file="$1"
+need_update() {
+  local vfile="$1"
   local current=""
-  [ -f "$version_file" ] && current=$(cat "$version_file")
-  if [ -n "$current" ]; then
-    if [ "$current" = "$LATEST_TAG" ]; then
-      warn "Уже установлена актуальная версия ${BOLD}${current}${RESET}"
-      read -rp "  Всё равно переустановить? [y/N]: " force </dev/tty
-      [[ "$force" =~ ^[Yy]$ ]] || { info "Отменено."; exit 0; }
-    else
-      info "Установлена: ${BOLD}${current}${RESET} → доступна: ${BOLD}${LATEST_TAG}${RESET}"
-    fi
+  [ -f "$vfile" ] && current=$(cat "$vfile")
+  if [ -n "$current" ] && [ "$current" = "$LATEST_TAG" ]; then
+    warn "Уже установлена актуальная версия ${BOLD}${current}${RESET}"
+    confirm "  Переустановить?" || { info "Отменено."; exit 0; }
+  elif [ -n "$current" ]; then
+    info "Обновление: ${BOLD}${current}${RESET} -> ${BOLD}${LATEST_TAG}${RESET}"
   else
-    info "Первая установка версии ${BOLD}${LATEST_TAG}${RESET}"
+    info "Первая установка ${BOLD}${LATEST_TAG}${RESET}"
   fi
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-# УСТАНОВКА / ОБНОВЛЕНИЕ СЕРВЕРА
-# ══════════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 install_server() {
   require curl; require tar; require systemctl
-  local arch; arch=$(detect_arch)
-  [ "$arch" = "amd64" ] || error "Сервер поддерживается только на amd64"
+  [ "$(detect_arch)" = "amd64" ] || die "Сервер поддерживается только на amd64"
 
-  fetch_release_info "mon-server-linux-amd64.tar.gz"
-  check_version "$VERSION_FILE"
+  fetch_latest "mon-server-linux-amd64.tar.gz"
+  need_update "$SERVER_VERSION"
 
-  local tmp; tmp=$(mktemp -d)
+  local tmp
+  tmp=$(mktemp -d)
   trap "rm -rf $tmp" EXIT
 
-  download "$ASSET_URL" "$tmp/mon-server.tar.gz"
-  tar -xzf "$tmp/mon-server.tar.gz" -C "$tmp"
+  info "Загрузка сервера..."
+  curl -fsSL --progress-bar -o "$tmp/server.tar.gz" "$ASSET_URL"
+  tar -xzf "$tmp/server.tar.gz" -C "$tmp"
 
-  # Останавливаем если уже запущен
-  if systemctl is-active --quiet mon-server 2>/dev/null; then
-    info "Останавливаем mon-server для обновления..."
-    systemctl stop mon-server
-  fi
+  systemctl is-active --quiet mon-server 2>/dev/null && systemctl stop mon-server && info "Служба остановлена"
 
-  # Бинарник
-  install -Dm755 "$tmp/mon-server" /usr/local/bin/mon-server
-  success "Бинарник обновлён: /usr/local/bin/mon-server"
+  install -Dm755 "$tmp/mon-server" "$SERVER_BIN"
+  ok "Бинарник: $SERVER_BIN"
 
-  # Фронтенд
-  mkdir -p /opt/linkmus-monitor/web
-  rm -rf /opt/linkmus-monitor/web/*
-  cp -r "$tmp/web-dist/." /opt/linkmus-monitor/web/
-  success "Фронтенд обновлён: /opt/linkmus-monitor/web/"
+  mkdir -p "$SERVER_WEB"
+  rm -rf "${SERVER_WEB:?}"/*
+  cp -r "$tmp/web-dist/." "$SERVER_WEB/"
+  ok "Фронтенд: $SERVER_WEB"
 
-  mkdir -p /opt/linkmus-monitor/data
+  mkdir -p "$SERVER_DATA"
 
-  # Systemd unit (перезаписываем при каждой установке — вдруг изменился)
-  cat > /etc/systemd/system/mon-server.service <<'EOF'
+  cat > /etc/systemd/system/mon-server.service << SERVICE
 [Unit]
 Description=LinkMus Monitor Server
 After=network-online.target
@@ -110,115 +94,105 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/linkmus-monitor/data
-ExecStart=/usr/local/bin/mon-server
+WorkingDirectory=$SERVER_DATA
+ExecStart=$SERVER_BIN
 Restart=always
 RestartSec=5
 User=root
 
 [Install]
 WantedBy=multi-user.target
-EOF
+SERVICE
 
   systemctl daemon-reload
   systemctl enable mon-server
   systemctl restart mon-server
-  success "Служба mon-server запущена"
+  ok "Служба mon-server запущена"
 
-  # Nginx — только при первой установке
   if command -v nginx &>/dev/null; then
     if [ ! -f /etc/nginx/sites-available/linkmus-monitor ]; then
-      cat > /etc/nginx/sites-available/linkmus-monitor <<'EOF'
+      cat > /etc/nginx/sites-available/linkmus-monitor << NGINX
 server {
     listen 80;
     server_name _;
-
-    root /opt/linkmus-monitor/web;
+    root $SERVER_WEB;
     index index.html;
-
     location /api/ {
         proxy_pass http://127.0.0.1:8080;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header Host \$host;
     }
-
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
+    location / { try_files \$uri \$uri/ /index.html; }
 }
-EOF
+NGINX
       ln -sf /etc/nginx/sites-available/linkmus-monitor /etc/nginx/sites-enabled/
       rm -f /etc/nginx/sites-enabled/default
       nginx -t && systemctl reload nginx
-      success "Nginx настроен"
+      ok "Nginx настроен"
     else
-      systemctl reload nginx
-      success "Nginx перезагружен"
+      nginx -t && systemctl reload nginx
+      ok "Nginx перезагружен"
     fi
   else
     warn "Nginx не найден — интерфейс доступен напрямую на :8080"
   fi
 
-  # Сохраняем версию
-  echo "$LATEST_TAG" > "$VERSION_FILE"
-
+  echo "$LATEST_TAG" > "$SERVER_VERSION"
   install_mon_cli
-
   echo ""
-  success "Сервер ${BOLD}${LATEST_TAG}${RESET} установлен!"
-  echo -e "  Веб-интерфейс: ${BOLD}http://$(hostname -I | awk '{print $1}')${RESET}"
-  echo -e "  Справка:       ${BOLD}mon help${RESET}"
+  ok "Сервер ${BOLD}${LATEST_TAG}${RESET} установлен!"
+  echo -e "  Адрес: ${BOLD}http://$(hostname -I | awk '{print $1}')${RESET}"
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-# УСТАНОВКА / ОБНОВЛЕНИЕ АГЕНТА (Linux)
-# ══════════════════════════════════════════════════════════════════════════════
-install_agent_linux() {
+# ──────────────────────────────────────────────────────────────────────────────
+install_agent() {
   require curl; require systemctl
 
-  local arch; arch=$(detect_arch)
-  local asset_name="mon-agent-linux"
-  [ "$arch" = "arm64" ] && asset_name="mon-agent-linux-arm64"
+  local arch
+  arch=$(detect_arch)
+  local asset="mon-agent-linux"
+  [ "$arch" = "arm64" ] && asset="mon-agent-linux-arm64"
 
-  fetch_release_info "$asset_name"
-  check_version "$AGENT_VERSION_FILE"
+  fetch_latest "$asset"
+  need_update "$AGENT_VERSION"
 
-  local tmp; tmp=$(mktemp -d)
+  local tmp
+  tmp=$(mktemp -d)
   trap "rm -rf $tmp" EXIT
 
-  download "$ASSET_URL" "$tmp/mon-agent"
+  info "Загрузка агента..."
+  curl -fsSL --progress-bar -o "$tmp/mon-agent" "$ASSET_URL"
 
-  # Останавливаем если запущен
-  if systemctl is-active --quiet mon-agent 2>/dev/null; then
-    info "Останавливаем mon-agent для обновления..."
-    systemctl stop mon-agent
-  fi
+  systemctl is-active --quiet mon-agent 2>/dev/null && systemctl stop mon-agent && info "Служба остановлена"
 
-  install -Dm755 "$tmp/mon-agent" /usr/local/bin/mon-agent
-  success "Бинарник обновлён: /usr/local/bin/mon-agent"
+  mkdir -p "$AGENT_DIR"
+  install -Dm755 "$tmp/mon-agent" "$AGENT_BIN"
+  ok "Бинарник: $AGENT_BIN"
 
-  # Конфиг — только при первой установке, при обновлении не трогаем
-  mkdir -p /opt/mon-agent/configs
-  if [ ! -f /opt/mon-agent/configs/agent-config.yaml ]; then
+  if [ ! -f "$AGENT_CFG" ]; then
     echo ""
     echo -e "${BOLD}Настройка агента:${RESET}"
-    read -rp "  URL сервера [http://10.10.10.10:8080]: " server_url </dev/tty
-    server_url="${server_url:-http://10.10.10.10:8080}"
-    read -rp "  Интервал отправки в секундах [5]: " interval </dev/tty
-    interval="${interval:-5}"
-    interval="${interval%s}s"
-    cat > /opt/mon-agent/configs/agent-config.yaml <<EOF
-server:
-  url: "${server_url}/api/metrics"
-  interval: ${interval}
-EOF
-    success "Конфиг создан: /opt/mon-agent/configs/agent-config.yaml"
+    read -rp "  URL сервера [http://10.10.10.10:8080]: " srv </dev/tty
+    srv="${srv:-http://10.10.10.10:8080}"
+    read -rp "  Интервал в секундах [5]: " ivl </dev/tty
+    ivl="${ivl:-5}"
+    ivl="${ivl%s}s"
+    printf 'server:\n  url: "%s/api/metrics"\n  interval: %s\n' "$srv" "$ivl" > "$AGENT_CFG"
+    ok "Конфиг создан: $AGENT_CFG"
   else
-    success "Конфиг сохранён без изменений"
+    ok "Текущий конфиг:"
+    cat "$AGENT_CFG"
+    echo ""
+    if confirm "  Изменить настройки?"; then
+      read -rp "  URL сервера: " srv </dev/tty
+      read -rp "  Интервал в секундах: " ivl </dev/tty
+      ivl="${ivl%s}s"
+      printf 'server:\n  url: "%s/api/metrics"\n  interval: %s\n' "$srv" "$ivl" > "$AGENT_CFG"
+      ok "Конфиг обновлён"
+    fi
   fi
 
-  # Systemd unit
-  cat > /etc/systemd/system/mon-agent.service <<'EOF'
+  cat > /etc/systemd/system/mon-agent.service << SERVICE
 [Unit]
 Description=LinkMus Monitor Agent
 After=network-online.target
@@ -226,231 +200,120 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-WorkingDirectory=/opt/mon-agent
-ExecStart=/usr/local/bin/mon-agent
+WorkingDirectory=$AGENT_DIR
+ExecStart=$AGENT_BIN
 Restart=always
 RestartSec=5
 User=root
 
 [Install]
 WantedBy=multi-user.target
-EOF
+SERVICE
 
   systemctl daemon-reload
   systemctl enable mon-agent
   systemctl restart mon-agent
-  success "Служба mon-agent запущена"
+  ok "Служба mon-agent запущена"
 
-  # Сохраняем версию
-  echo "$LATEST_TAG" > "$AGENT_VERSION_FILE"
-
+  echo "$LATEST_TAG" > "$AGENT_VERSION"
   install_mon_cli
-
   echo ""
-  success "Агент ${BOLD}${LATEST_TAG}${RESET} установлен!"
-  echo -e "  Справка:    ${BOLD}mon help${RESET}"
+  ok "Агент ${BOLD}${LATEST_TAG}${RESET} установлен!"
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-# УСТАНОВКА CLI-ОБЁРТКИ mon
-# ══════════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 install_mon_cli() {
-  cat > /usr/local/bin/mon <<'MONSCRIPT'
+  cat > /usr/local/bin/mon << 'MONEOF'
 #!/usr/bin/env bash
-# LinkMus Monitor — управление службами
-# Использование: mon <server|agent> <команда>
-
-RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
-
-help() {
-  echo -e "${BOLD}${CYAN}LinkMus Monitor — управление службами${RESET}"
-  echo ""
-  echo -e "${BOLD}Использование:${RESET} mon <цель> <команда>"
-  echo ""
-  echo -e "${BOLD}Цели:${RESET}"
-  echo "  server   — сервер мониторинга (mon-server)"
-  echo "  agent    — агент сбора метрик (mon-agent)"
-  echo ""
-  echo -e "${BOLD}Команды:${RESET}"
-  echo "  start    — запустить службу"
-  echo "  stop     — остановить службу"
-  echo "  restart  — перезапустить службу"
-  echo "  status   — статус службы"
-  echo "  enable   — включить автозапуск при старте системы"
-  echo "  disable  — выключить автозапуск"
-  echo "  logs     — следить за логами в реальном времени (Ctrl+C для выхода)"
-  echo ""
-  echo -e "${BOLD}Примеры:${RESET}"
-  echo "  mon server start"
-  echo "  mon server status"
-  echo "  mon agent logs"
-  echo "  mon agent enable"
-}
-
+GREEN='\033[0;32m'; RED='\033[0;31m'; CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 usage() {
-  help
+  echo -e "${BOLD}${CYAN}LinkMus Monitor${RESET}"
+  echo -e "Использование: mon <server|agent> <start|stop|restart|status|enable|disable|logs>"
   exit 1
 }
-
-[ $# -lt 1 ] && usage
-
-if [ "$1" = "help" ] || [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
-  help
-  exit 0
-fi
-
 [ $# -lt 2 ] && usage
-
 case "$1" in
-  server) SERVICE="mon-server" ;;
-  agent)  SERVICE="mon-agent" ;;
-  *)
-    echo -e "${RED}Неизвестная цель:${RESET} $1 (используйте 'server' или 'agent')"
-    usage
-    ;;
+  server) SVC="mon-server" ;;
+  agent)  SVC="mon-agent" ;;
+  help|--help|-h) usage ;;
+  *) echo -e "${RED}Неизвестная цель:${RESET} $1"; usage ;;
 esac
-
 case "$2" in
-  start)
-    systemctl start "$SERVICE"
-    echo -e "${GREEN}[OK]${RESET} $SERVICE запущен"
-    ;;
-  stop)
-    systemctl stop "$SERVICE"
-    echo -e "${GREEN}[OK]${RESET} $SERVICE остановлен"
-    ;;
-  restart)
-    systemctl restart "$SERVICE"
-    echo -e "${GREEN}[OK]${RESET} $SERVICE перезапущен"
-    ;;
-  status)
-    systemctl status "$SERVICE" --no-pager
-    ;;
-  enable)
-    systemctl enable "$SERVICE"
-    echo -e "${GREEN}[OK]${RESET} Автозапуск $SERVICE включён"
-    ;;
-  disable)
-    systemctl disable "$SERVICE"
-    echo -e "${GREEN}[OK]${RESET} Автозапуск $SERVICE выключен"
-    ;;
-  logs)
-    echo -e "${CYAN}Логи $SERVICE (Ctrl+C для выхода):${RESET}"
-    journalctl -fu "$SERVICE"
-    ;;
-  *)
-    echo -e "${RED}Неизвестная команда:${RESET} $2"
-    usage
-    ;;
+  start)   systemctl start   "$SVC" && echo -e "${GREEN}[OK]${RESET} $SVC запущен" ;;
+  stop)    systemctl stop    "$SVC" && echo -e "${GREEN}[OK]${RESET} $SVC остановлен" ;;
+  restart) systemctl restart "$SVC" && echo -e "${GREEN}[OK]${RESET} $SVC перезапущен" ;;
+  status)  systemctl status  "$SVC" --no-pager ;;
+  enable)  systemctl enable  "$SVC" && echo -e "${GREEN}[OK]${RESET} Автозапуск включён" ;;
+  disable) systemctl disable "$SVC" && echo -e "${GREEN}[OK]${RESET} Автозапуск выключен" ;;
+  logs)    journalctl -fu    "$SVC" ;;
+  *) echo -e "${RED}Неизвестная команда:${RESET} $2"; usage ;;
 esac
-MONSCRIPT
-
+MONEOF
   chmod +x /usr/local/bin/mon
-  success "CLI-обёртка установлена: mon server|agent start|stop|restart|status|enable|disable|logs"
+  ok "CLI: mon server|agent start|stop|restart|status|enable|disable|logs"
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ДЕИНСТАЛЛЯЦИЯ СЕРВЕРА
-# ══════════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 uninstall_server() {
   echo ""
-  warn "Это удалит mon-server, фронтенд, базу данных и конфиг nginx."
-  read -rp "  Продолжить? [y/N]: " confirm </dev/tty
-  [[ "$confirm" =~ ^[Yy]$ ]] || { info "Отменено."; exit 0; }
+  warn "Будет удалено ВСЁ: бинарник, фронтенд, база данных, логи, конфиг nginx."
+  confirm "  Продолжить?" || { info "Отменено."; exit 0; }
 
-  if systemctl is-active --quiet mon-server 2>/dev/null; then
-    systemctl stop mon-server
-    info "Служба mon-server остановлена"
-  fi
-  if systemctl is-enabled --quiet mon-server 2>/dev/null; then
-    systemctl disable mon-server
-  fi
-
+  systemctl stop    mon-server 2>/dev/null || true
+  systemctl disable mon-server 2>/dev/null || true
   rm -f /etc/systemd/system/mon-server.service
   systemctl daemon-reload
 
-  rm -f /usr/local/bin/mon-server
-  rm -rf /opt/linkmus-monitor
+  rm -f "$SERVER_BIN"
+  rm -rf "$SERVER_DIR"
 
-  if [ -f /etc/nginx/sites-enabled/linkmus-monitor ]; then
-    rm -f /etc/nginx/sites-enabled/linkmus-monitor
-    rm -f /etc/nginx/sites-available/linkmus-monitor
-    nginx -t && systemctl reload nginx
-    info "Конфиг nginx удалён"
-  fi
+  rm -f /etc/nginx/sites-enabled/linkmus-monitor
+  rm -f /etc/nginx/sites-available/linkmus-monitor
+  command -v nginx &>/dev/null && nginx -t && systemctl reload nginx 2>/dev/null || true
 
-  # Удаляем mon только если агент тоже не установлен
-  if [ ! -f /usr/local/bin/mon-agent ]; then
-    rm -f /usr/local/bin/mon
-  fi
+  [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon
 
-  success "Сервер удалён."
+  ok "Сервер полностью удалён."
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ДЕИНСТАЛЛЯЦИЯ АГЕНТА (Linux)
-# ══════════════════════════════════════════════════════════════════════════════
-uninstall_agent_linux() {
+# ──────────────────────────────────────────────────────────────────────────────
+uninstall_agent() {
   echo ""
-  warn "Это удалит mon-agent и его конфиг."
-  read -rp "  Продолжить? [y/N]: " confirm </dev/tty
-  [[ "$confirm" =~ ^[Yy]$ ]] || { info "Отменено."; exit 0; }
+  warn "Будет удалено ВСЁ: бинарник, конфиг, логи агента."
+  confirm "  Продолжить?" || { info "Отменено."; exit 0; }
 
-  if systemctl is-active --quiet mon-agent 2>/dev/null; then
-    systemctl stop mon-agent
-    info "Служба mon-agent остановлена"
-  fi
-  if systemctl is-enabled --quiet mon-agent 2>/dev/null; then
-    systemctl disable mon-agent
-  fi
-
+  systemctl stop    mon-agent 2>/dev/null || true
+  systemctl disable mon-agent 2>/dev/null || true
   rm -f /etc/systemd/system/mon-agent.service
   systemctl daemon-reload
 
-  rm -f /usr/local/bin/mon-agent
-  rm -rf /opt/mon-agent
+  rm -rf "$AGENT_DIR"
 
-  # Удаляем mon только если сервер тоже не установлен
-  if [ ! -f /usr/local/bin/mon-server ]; then
-    rm -f /usr/local/bin/mon
-  fi
+  [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon
 
-  success "Агент удалён."
+  ok "Агент полностью удалён."
 }
 
-# ══════════════════════════════════════════════════════════════════════════════
-# ГЛАВНОЕ МЕНЮ
-# ══════════════════════════════════════════════════════════════════════════════
+# ──────────────────────────────────────────────────────────────────────────────
 echo ""
 echo -e "${BOLD}${CYAN}╔══════════════════════════════════════════╗${RESET}"
 echo -e "${BOLD}${CYAN}║      LinkMus Monitor — Установщик       ║${RESET}"
 echo -e "${BOLD}${CYAN}╚══════════════════════════════════════════╝${RESET}"
 echo ""
 
-[ "$(id -u)" -eq 0 ] || error "Запустите от root: sudo bash install.sh"
+[ "$(id -u)" -eq 0 ] || die "Запустите от root: sudo bash install.sh"
 
-echo -e "Что сделать?"
-echo -e "  ${BOLD}1${RESET}) Установить / обновить сервер (mon-server + nginx)"
-echo -e "  ${BOLD}2${RESET}) Установить / обновить агент — Linux (amd64 / arm64)"
-echo -e "  ${BOLD}3${RESET}) Агент — Windows (инструкция)"
-echo -e "  ${BOLD}4${RESET}) Удалить сервер"
-echo -e "  ${BOLD}5${RESET}) Удалить агент Linux"
+echo -e "  ${BOLD}1${RESET}) Установить / обновить сервер"
+echo -e "  ${BOLD}2${RESET}) Установить / обновить агент Linux"
+echo -e "  ${BOLD}3${RESET}) Удалить сервер (полная очистка)"
+echo -e "  ${BOLD}4${RESET}) Удалить агент Linux (полная очистка)"
 echo ""
-read -rp "Выбор [1-5]: " choice </dev/tty
+read -rp "Выбор [1-4]: " choice </dev/tty
 
 case "$choice" in
   1) install_server ;;
-  2) install_agent_linux ;;
-  3)
-    echo ""
-    echo -e "${BOLD}Установка / обновление агента на Windows:${RESET}"
-    echo ""
-    echo "  Запустите PowerShell от имени администратора:"
-    echo -e "  ${CYAN}powershell -ExecutionPolicy Bypass -Command \"& { iwr https://raw.githubusercontent.com/${REPO}/main/install-agent.ps1 | iex }\"${RESET}"
-    echo ""
-    echo "  Скрипт сам определит: первая установка или обновление."
-    ;;
-  4) uninstall_server ;;
-  5) uninstall_agent_linux ;;
-  *) error "Неверный выбор: $choice" ;;
+  2) install_agent ;;
+  3) uninstall_server ;;
+  4) uninstall_agent ;;
+  *) die "Неверный выбор: $choice" ;;
 esac

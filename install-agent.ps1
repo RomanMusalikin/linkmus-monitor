@@ -111,15 +111,24 @@ if (-not (Test-Path "$INSTALL_DIR\mon-agent.exe")) {
 }
 Write-Ok "Agent: $INSTALL_DIR\mon-agent.exe"
 
-# -- Config - only on first install -------------------------------------------
-if (-not (Test-Path $CONFIG_FILE)) {
+# -- Config -------------------------------------------------------------------
+Write-Host ""
+if (Test-Path $CONFIG_FILE) {
+    Write-Host "  Current config:" -ForegroundColor White
+    Get-Content $CONFIG_FILE | ForEach-Object { Write-Host "    $_" -ForegroundColor Gray }
     Write-Host ""
+    $change = Read-Host "  Change settings? [y/N]"
+    $doConfig = $change -match '^[Yy]$'
+} else {
     Write-Host "  Configuration:" -ForegroundColor White
+    $doConfig = $true
+}
+
+if ($doConfig) {
     $serverUrl = Read-Host "  Server URL [http://10.10.10.10:8080]"
     if ([string]::IsNullOrWhiteSpace($serverUrl)) { $serverUrl = "http://10.10.10.10:8080" }
     $intervalRaw = Read-Host "  Send interval in seconds [5]"
     if ([string]::IsNullOrWhiteSpace($intervalRaw)) { $intervalRaw = "5" }
-    # Accept both "10" and "10s"
     $interval = $intervalRaw.Trim().TrimEnd('s').Trim() + "s"
 
     @"
