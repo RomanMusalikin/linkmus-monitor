@@ -6,6 +6,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/shirou/gopsutil/v3/host"
@@ -107,6 +108,7 @@ func Run() {
 
 func collectAndSend(t time.Time, serverURL string) {
 	hostname, _ := os.Hostname()
+	hostname = strings.TrimSuffix(hostname, ".localdomain")
 	outboundIP := getOutboundIP()
 
 	// Системная информация

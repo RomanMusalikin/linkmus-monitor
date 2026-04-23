@@ -32,14 +32,17 @@ func CollectAllDisks() []DiskInfo {
 	}
 	var result []DiskInfo
 	for _, p := range parts {
-		// Пропускаем виртуальные и системные ФС
+		// Пропускаем виртуальные, системные и snap-ФС
 		fs := strings.ToLower(p.Fstype)
 		if fs == "tmpfs" || fs == "devtmpfs" || fs == "sysfs" ||
 			fs == "proc" || fs == "cgroup" || fs == "cgroup2" ||
 			fs == "pstore" || fs == "securityfs" || fs == "debugfs" ||
+			fs == "squashfs" || fs == "overlay" || fs == "fuse" ||
 			strings.HasPrefix(p.Mountpoint, "/sys") ||
 			strings.HasPrefix(p.Mountpoint, "/proc") ||
-			strings.HasPrefix(p.Mountpoint, "/dev") {
+			strings.HasPrefix(p.Mountpoint, "/dev") ||
+			strings.HasPrefix(p.Mountpoint, "/snap") ||
+			strings.HasPrefix(p.Mountpoint, "/run") {
 			continue
 		}
 		u, err := disk.Usage(p.Mountpoint)

@@ -58,8 +58,8 @@ function ProbeDot({ label, active, ms }) {
     <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg border text-xs font-medium
       ${active
         ? 'bg-emerald-500/8 border-emerald-500/20 text-emerald-400'
-        : 'bg-slate-700/30 border-slate-700/40 text-slate-600'}`}>
-      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+        : 'bg-red-500/8 border-red-500/20 text-red-400/70'}`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? 'bg-emerald-400' : 'bg-red-500/60'}`} />
       {label}
       {active && ms > 0 && <span className="text-emerald-500/60 text-[10px]">{Math.round(ms)}ms</span>}
     </div>
@@ -196,14 +196,9 @@ export default function NodeCard({ node, onDeleted }) {
 
         {/* ── Сервисные пробы ── */}
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {/* SSH всегда показываем */}
           <ProbeDot label="SSH" active={node.sshReachable} ms={node.sshMs} />
-          {isWindows && (
-            <>
-              <ProbeDot label="RDP" active={node.rdpReachable} ms={node.rdpMs} />
-              <ProbeDot label="SMB" active={node.smbReachable} ms={node.smbMs} />
-            </>
-          )}
+          <ProbeDot label="RDP" active={node.rdpReachable} ms={node.rdpMs} />
+          <ProbeDot label="SMB" active={node.smbReachable} ms={node.smbMs} />
           {node.httpReachable && (
             <ProbeDot label="HTTP" active={node.httpReachable} ms={node.httpMs} />
           )}
