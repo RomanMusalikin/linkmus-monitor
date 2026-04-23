@@ -117,8 +117,10 @@ if (-not (Test-Path $CONFIG_FILE)) {
     Write-Host "  Configuration:" -ForegroundColor White
     $serverUrl = Read-Host "  Server URL [http://10.10.10.10:8080]"
     if ([string]::IsNullOrWhiteSpace($serverUrl)) { $serverUrl = "http://10.10.10.10:8080" }
-    $interval = Read-Host "  Send interval [5s]"
-    if ([string]::IsNullOrWhiteSpace($interval)) { $interval = "5s" }
+    $intervalRaw = Read-Host "  Send interval in seconds [5]"
+    if ([string]::IsNullOrWhiteSpace($intervalRaw)) { $intervalRaw = "5" }
+    # Accept both "10" and "10s"
+    $interval = $intervalRaw.Trim().TrimEnd('s').Trim() + "s"
 
     @"
 server:
