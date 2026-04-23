@@ -39,40 +39,25 @@
 
 ## Установка сервера (Linux, amd64)
 
-1. Скачайте последний релиз со [страницы releases](https://github.com/RomanMusalikin/linkmus-monitor/releases)
-2. Распакуйте архив `mon-server-linux-amd64.tar.gz`:
-
 ```bash
-tar xzf mon-server-linux-amd64.tar.gz
+curl -sSL https://raw.githubusercontent.com/RomanMusalikin/linkmus-monitor/main/install.sh | sudo bash
+# Выбрать пункт 1 — Установить / обновить сервер
 ```
 
-3. Создайте systemd-службу:
+Скрипт скачает бинарник и фронтенд из последнего GitHub Release, создаст systemd-службу `mon-server` (порт 8080) и настроит Nginx (если установлен). При повторном запуске — обновит до новой версии.
+
+После установки откройте `http://<IP-сервера>` — при первом входе система предложит создать учётную запись администратора.
+
+---
+
+## Управление службами
+
+После установки доступна команда `mon`:
 
 ```bash
-sudo cp mon-server /usr/local/bin/
-sudo mkdir -p /opt/mon-server
-sudo cp -r web-dist /opt/mon-server/
-
-# /etc/systemd/system/mon-server.service
-[Unit]
-Description=LinkMus Monitor Server
-After=network.target
-
-[Service]
-ExecStart=/usr/local/bin/mon-server
-WorkingDirectory=/opt/mon-server
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
+mon server start|stop|restart|status|logs
+mon agent  start|stop|restart|status|logs
 ```
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now mon-server
-```
-
-После запуска откройте `http://<IP-сервера>:8080` — при первом входе система предложит создать учётную запись администратора.
 
 ---
 
@@ -80,40 +65,12 @@ sudo systemctl enable --now mon-server
 
 ### Linux (amd64 / arm64)
 
-1. Скачайте `mon-agent-linux` или `mon-agent-linux-arm64` со страницы релизов
-2. Создайте конфиг рядом с бинарником:
-
-```yaml
-# /opt/mon-agent/agent-config.yaml
-server:
-  url: "http://10.10.10.10:8080/api/metrics"
-  interval: 5s
-```
-
-3. Создайте systemd-службу:
-
 ```bash
-sudo cp mon-agent-linux /opt/mon-agent/mon-agent
-sudo chmod +x /opt/mon-agent/mon-agent
-
-# /etc/systemd/system/mon-agent.service
-[Unit]
-Description=LinkMus Monitor Agent
-After=network.target
-
-[Service]
-ExecStart=/opt/mon-agent/mon-agent
-WorkingDirectory=/opt/mon-agent
-Restart=always
-
-[Install]
-WantedBy=multi-user.target
+curl -sSL https://raw.githubusercontent.com/RomanMusalikin/linkmus-monitor/main/install.sh | sudo bash
+# Выбрать пункт 2 — Установить / обновить агент Linux
 ```
 
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable --now mon-agent
-```
+Скрипт спросит URL сервера и интервал отправки, создаст systemd-службу `mon-agent`. При повторном запуске — обновит бинарник и предложит изменить настройки.
 
 ### Windows (amd64)
 
@@ -234,6 +191,7 @@ linkmus-monitor/
 │       │   └── useAuth.js
 │       └── lib/api.js
 ├── .github/workflows/release.yml  # CI: сборка linux/windows/arm64 + релиз
+├── install.sh                     # установщик сервера и агента Linux
 ├── install-agent.ps1              # установщик агента Windows (офлайн + онлайн режим)
 ├── go.mod
 └── go.sum
