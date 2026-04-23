@@ -54,14 +54,7 @@ jobs:
 
       - name: Package Windows agent (exe + installer)
         run: |
-          # Re-save script as UTF-8 BOM so PowerShell on Windows parses it correctly
-          python3 -c "
-import codecs, sys
-with open('install-agent.ps1', 'r', encoding='utf-8') as f:
-    content = f.read()
-with open('dist/install-agent.ps1', 'w', encoding='utf-8-sig') as f:
-    f.write(content)
-"
+          cp install-agent.ps1 dist/install-agent.ps1
           cd dist
           zip mon-agent-windows-amd64.zip mon-agent.exe install-agent.ps1
 
