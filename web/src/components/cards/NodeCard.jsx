@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { Monitor, Terminal, Trash2, Wifi, GripVertical } from 'lucide-react';
 import Sparkline from '../charts/Sparkline';
@@ -61,16 +61,25 @@ function ProbeDot({ label, active, ms }) {
         : 'bg-red-500/8 border-red-500/20 text-red-400/70'}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${active ? 'bg-emerald-400' : 'bg-red-500/60'}`} />
       {label}
-      {active && ms > 0 && <span className="text-emerald-500/60 text-[10px]">{Math.round(ms)}ms</span>}
+      {active && ms > 0 && <span className="text-emerald-500/60 text-[10px]">{ms < 1 ? '<1' : Math.round(ms)}ms</span>}
     </div>
   );
 }
 
-export default function NodeCard({ node, onDeleted, dragHandleProps }) {
+export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging }) {
   const isWindows = node.os?.toLowerCase().includes('windows');
   const ramPct = node.ramTotal > 0 ? (node.ramUsed / node.ramTotal) * 100 : 0;
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [wasDragging, setWasDragging] = useState(false);
+
+  useEffect(() => {
+    if (isDragging) setWasDragging(true);
+    else if (wasDragging) {
+      const t = setTimeout(() => setWasDragging(false), 100);
+      return () => clearTimeout(t);
+    }
+  }, [isDragging]);
 
   async function handleDelete(e) {
     e.preventDefault();
@@ -97,27 +106,27 @@ export default function NodeCard({ node, onDeleted, dragHandleProps }) {
   return (
     <Link
       to={`/node/${node.name}`}
+      onClick={e => { if (wasDragging) e.preventDefault(); }}
       className="group bg-slate-800/80 backdrop-blur-sm rounded-2xl border border-slate-700/50
                  hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5
                  transition-all duration-200 block relative overflow-hidden"
     >
       {/* Цветная полоска сверху по статусу */}
       <div className={`h-0.5 w-full ${node.online ? 'bg-gradient-to-r from-emerald-500/60 to-blue-500/40' : 'bg-slate-700'}`} />
-      {/* Drag handle */}
-      {dragHandleProps && (
-        <div
-          {...dragHandleProps}
-          onClick={e => e.preventDefault()}
-          className="absolute top-2 right-2 p-1 rounded text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-10"
-        >
-          <GripVertical className="w-4 h-4" />
-        </div>
-      )}
 
       <div className="p-5">
         {/* ── Заголовок ── */}
         <div className="flex items-start justify-between mb-4">
           <div className="flex items-center gap-2.5">
+            {dragHandleProps && (
+              <div
+                {...dragHandleProps}
+                onClick={e => e.preventDefault()}
+                className="flex-shrink-0 p-1 -ml-1 rounded text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
+              >
+                <GripVertical className="w-4 h-4" />
+              </div>
+            )}
             <div className="relative flex-shrink-0">
               <div className={`p-2 rounded-xl ${isWindows ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
                 {isWindows

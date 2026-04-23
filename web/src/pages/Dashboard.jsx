@@ -35,7 +35,7 @@ function SortableCard({ node, onDeleted }) {
   };
   return (
     <div ref={setNodeRef} style={style}>
-      <NodeCard node={node} onDeleted={onDeleted} dragHandleProps={{ ...attributes, ...listeners }} />
+      <NodeCard node={node} onDeleted={onDeleted} isDragging={isDragging} dragHandleProps={{ ...attributes, ...listeners }} />
     </div>
   );
 }

@@ -50,7 +50,7 @@ func GetProbe(ip string) ProbeResult {
 func probeTCP(host, port string) (bool, float64) {
 	start := time.Now()
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 2*time.Second)
-	ms := float64(time.Since(start).Milliseconds())
+	ms := float64(time.Since(start).Nanoseconds()) / 1e6
 	if err != nil {
 		return false, 0
 	}
@@ -62,7 +62,7 @@ func probeHTTP(ip string) (bool, float64) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	start := time.Now()
 	resp, err := client.Get("http://" + ip + "/")
-	ms := float64(time.Since(start).Milliseconds())
+	ms := float64(time.Since(start).Nanoseconds()) / 1e6
 	if err != nil {
 		return false, 0
 	}
@@ -79,7 +79,7 @@ func probeDNS(ip string) (bool, float64) {
 	}
 	start := time.Now()
 	_, err := resolver.LookupHost(context.Background(), "srv-mon-01.local")
-	ms := float64(time.Since(start).Milliseconds())
+	ms := float64(time.Since(start).Nanoseconds()) / 1e6
 	if err != nil {
 		// Пробуем просто TCP:53 как fallback
 		ok, ms2 := probeTCP(ip, "53")
