@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Monitor, Terminal, Trash2, Wifi } from 'lucide-react';
+import { Monitor, Terminal, Trash2, Wifi, GripVertical } from 'lucide-react';
 import Sparkline from '../charts/Sparkline';
 import { deleteNode } from '../../lib/api';
 
@@ -66,7 +66,7 @@ function ProbeDot({ label, active, ms }) {
   );
 }
 
-export default function NodeCard({ node, onDeleted }) {
+export default function NodeCard({ node, onDeleted, dragHandleProps }) {
   const isWindows = node.os?.toLowerCase().includes('windows');
   const ramPct = node.ramTotal > 0 ? (node.ramUsed / node.ramTotal) * 100 : 0;
   const [confirming, setConfirming] = useState(false);
@@ -103,6 +103,16 @@ export default function NodeCard({ node, onDeleted }) {
     >
       {/* Цветная полоска сверху по статусу */}
       <div className={`h-0.5 w-full ${node.online ? 'bg-gradient-to-r from-emerald-500/60 to-blue-500/40' : 'bg-slate-700'}`} />
+      {/* Drag handle */}
+      {dragHandleProps && (
+        <div
+          {...dragHandleProps}
+          onClick={e => e.preventDefault()}
+          className="absolute top-2 right-2 p-1 rounded text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity z-10"
+        >
+          <GripVertical className="w-4 h-4" />
+        </div>
+      )}
 
       <div className="p-5">
         {/* ── Заголовок ── */}
