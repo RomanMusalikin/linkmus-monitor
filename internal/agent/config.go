@@ -27,12 +27,25 @@ func LoadConfig(path string) (*Config, error) {
 	return &cfg, nil
 }
 
-// configPath возвращает путь к конфигу рядом с исполняемым файлом.
-// Это надёжно работает как при запуске службой Windows, так и вручную из любой директории.
+// configPath ищет agent-config.yaml в нескольких местах для совместимости
+// со старыми установками (бинарник в /usr/local/bin, конфиг в /opt/mon-agent/).
 func configPath() string {
-	exe, err := os.Executable()
-	if err != nil {
-		return "agent-config.yaml"
+	candidates := []string{}
+
+	if exe, err := os.Executable(); err == nil {
+		candidates = append(candidates, filepath.Join(filepath.Dir(exe), "agent-config.yaml"))
 	}
-	return filepath.Join(filepath.Dir(exe), "agent-config.yaml")
+	candidates = append(candidates,
+		"/opt/mon-agent/agent-config.yaml",
+		"/opt/mon-agent/configs/agent-config.yaml",
+		"C:\\mon-agent\\agent-config.yaml",
+		"agent-config.yaml",
+	)
+
+	for _, p := range candidates {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	return candidates[0]
 }
