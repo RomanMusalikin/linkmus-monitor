@@ -83,10 +83,13 @@ type MetricPayload struct {
 	TopMemJSON    string `json:"top_mem_json"`    // JSON топ-10 по RAM
 }
 
+const maxLogSize = 5 * 1024 * 1024 // 5 МБ
+
 func Run() {
 	// Пишем логи в файл рядом с exe — работает при запуске как служба Windows
 	exe, _ := os.Executable()
 	logPath := exe[:len(exe)-len(".exe")] + ".log"
+	rotateLog(logPath)
 	if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
 		log.SetOutput(f)
 	}
@@ -239,6 +242,15 @@ func collectAndSend(t time.Time, serverURL string) {
 	}
 
 	SendToServer(serverURL, payload)
+}
+
+// rotateLog переименовывает лог в .log.old если он превышает maxLogSize.
+func rotateLog(path string) {
+	info, err := os.Stat(path)
+	if err != nil || info.Size() < maxLogSize {
+		return
+	}
+	os.Rename(path, path+".old")
 }
 
 // getOutboundIP определяет IP-адрес, с которого идёт трафик к внешним хостам
