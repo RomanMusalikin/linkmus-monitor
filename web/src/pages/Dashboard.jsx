@@ -1,6 +1,6 @@
 import { Activity, Server, AlertTriangle, Cpu, MemoryStick, HardDrive } from 'lucide-react';
 import NodeCard from '../components/cards/NodeCard';
-import { useNodes } from '../hooks/useNodes';
+import { useNodesContext } from '../context/NodesContext';
 
 function StatCard({ icon: Icon, label, value, sub, color = 'text-blue-400', bg = 'bg-blue-500/10' }) {
   return (
@@ -18,7 +18,7 @@ function StatCard({ icon: Icon, label, value, sub, color = 'text-blue-400', bg =
 }
 
 export default function Dashboard() {
-  const { data: nodes, loading, error, refresh } = useNodes();
+  const { data: nodes, loading, error, refresh } = useNodesContext();
 
   if (loading && !nodes) {
     return (

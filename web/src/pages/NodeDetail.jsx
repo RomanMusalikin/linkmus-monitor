@@ -6,7 +6,7 @@ import {
   Wifi, MemoryStick, Trash2
 } from 'lucide-react';
 import { deleteNode, fetchNodes } from '../lib/api';
-import { useNodes } from '../hooks/useNodes';
+import { useNodesContext } from '../context/NodesContext';
 import CpuGauge from '../components/charts/CpuGauge';
 import CpuHistory from '../components/charts/CpuHistory';
 import NetworkLines from '../components/charts/NetworkLines';
@@ -219,7 +219,7 @@ function ProcessesCard({ node, className }) {
 export default function NodeDetail() {
   const { nodeId } = useParams();
   const navigate = useNavigate();
-  const { data: nodes, loading, error } = useNodes();
+  const { data: nodes, loading, error } = useNodesContext();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [fullHistory, setFullHistory] = useState(null);

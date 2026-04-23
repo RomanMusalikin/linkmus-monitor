@@ -7,15 +7,18 @@ import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import { useNodes } from './hooks/useNodes';
 import { useAuth } from './hooks/useAuth';
+import { NodesContext } from './context/NodesContext';
 
 function AppShell({ onLogout }) {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
-  const { data: nodes } = useNodes();
+  const nodesState = useNodes();
+  const { data: nodes } = nodesState;
   const onlineCount = nodes?.filter(n => n.online).length ?? 0;
   const totalCount = nodes?.length ?? 0;
 
   return (
+    <NodesContext.Provider value={nodesState}>
     <div className="flex h-screen bg-slate-900 text-slate-100 overflow-hidden relative">
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} toggleSidebar={toggleSidebar} nodes={nodes ?? []} />
 
@@ -36,6 +39,7 @@ function AppShell({ onLogout }) {
         />
       )}
     </div>
+    </NodesContext.Provider>
   );
 }
 
