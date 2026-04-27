@@ -138,11 +138,6 @@ export default function Sidebar({ isOpen, setIsOpen, toggleSidebar, nodes = [] }
         </div>
       </nav>
 
-      <div className="p-4 border-t border-slate-700/50 text-xs text-slate-500 text-center flex-shrink-0 overflow-hidden">
-        <span className={`transition-all duration-300 ${isOpen ? 'opacity-100' : 'opacity-0 md:opacity-100'}`}>
-          {isOpen ? 'LinkMus v1.0' : 'v1.0'}
-        </span>
-      </div>
     </aside>
   );
 }
