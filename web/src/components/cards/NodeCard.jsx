@@ -71,14 +71,10 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging 
   const ramPct = node.ramTotal > 0 ? (node.ramUsed / node.ramTotal) * 100 : 0;
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [wasDragging, setWasDragging] = useState(false);
+  const wasDraggingRef = useRef(false);
 
   useEffect(() => {
-    if (isDragging) setWasDragging(true);
-    else if (wasDragging) {
-      const t = setTimeout(() => setWasDragging(false), 100);
-      return () => clearTimeout(t);
-    }
+    if (isDragging) wasDraggingRef.current = true;
   }, [isDragging]);
 
   async function handleDelete(e) {
@@ -106,7 +102,12 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging 
   return (
     <Link
       to={`/node/${node.name}`}
-      onClick={e => { if (wasDragging) e.preventDefault(); }}
+      onClick={e => {
+        if (wasDraggingRef.current) {
+          wasDraggingRef.current = false;
+          e.preventDefault();
+        }
+      }}
       className="group bg-slate-800/80 backdrop-blur-sm rounded-2xl border border-slate-700/50
                  hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5
                  transition-all duration-200 block relative overflow-hidden"
@@ -215,12 +216,12 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging 
 
         {/* ── Сервисные пробы ── */}
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <ProbeDot label="SSH" active={node.sshReachable} ms={node.sshMs} />
-          <ProbeDot label="RDP" active={node.rdpReachable} ms={node.rdpMs} />
-          <ProbeDot label="SMB" active={node.smbReachable} ms={node.smbMs} />
-          {node.httpReachable && (
-            <ProbeDot label="HTTP" active={node.httpReachable} ms={node.httpMs} />
-          )}
+          <ProbeDot label="SSH"  active={node.sshReachable}  ms={node.sshMs} />
+          {isWindows && <ProbeDot label="RDP"   active={node.rdpReachable}   ms={node.rdpMs} />}
+          {isWindows && <ProbeDot label="SMB"   active={node.smbReachable}   ms={node.smbMs} />}
+          <ProbeDot label="HTTP" active={node.httpReachable} ms={node.httpMs} />
+          {isWindows && <ProbeDot label="WinRM" active={node.winrmReachable} ms={node.winrmMs} />}
+          <ProbeDot label="DNS"  active={node.dnsReachable}  ms={node.dnsMs} />
           {(node.cpuTemp || 0) > 0 && (
             <span className="text-xs text-amber-400/80 ml-auto self-center">
               🌡 {Math.round(node.cpuTemp)}°C

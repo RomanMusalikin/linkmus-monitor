@@ -225,12 +225,105 @@ SERVICE
 install_mon_cli() {
   cat > /usr/local/bin/mon << 'MONEOF'
 #!/usr/bin/env bash
-GREEN='\033[0;32m'; RED='\033[0;31m'; CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
+GREEN='\033[0;32m'; RED='\033[0;31m'; CYAN='\033[0;36m'; YELLOW='\033[1;33m'; BOLD='\033[1m'; RESET='\033[0m'
+
+REPO="RomanMusalikin/linkmus-monitor"
+SERVER_DIR="/opt/linkmus-monitor"
+SERVER_BIN="/usr/local/bin/mon-server"
+SERVER_WEB="$SERVER_DIR/web"
+SERVER_VERSION="$SERVER_DIR/.version"
+AGENT_DIR="/opt/mon-agent"
+AGENT_BIN="$AGENT_DIR/mon-agent"
+AGENT_VERSION="$AGENT_DIR/.version"
+
 usage() {
   echo -e "${BOLD}${CYAN}LinkMus Monitor${RESET}"
-  echo -e "Использование: mon <server|agent> <start|stop|restart|status|enable|disable|logs>"
+  echo -e "Использование: ${BOLD}mon <server|agent> <команда>${RESET}"
+  echo ""
+  echo -e "  ${BOLD}start${RESET}    Запустить службу"
+  echo -e "  ${BOLD}stop${RESET}     Остановить службу"
+  echo -e "  ${BOLD}restart${RESET}  Перезапустить службу"
+  echo -e "  ${BOLD}status${RESET}   Показать статус службы"
+  echo -e "  ${BOLD}enable${RESET}   Включить автозапуск"
+  echo -e "  ${BOLD}disable${RESET}  Выключить автозапуск"
+  echo -e "  ${BOLD}logs${RESET}     Следить за логами (journalctl -f)"
+  echo -e "  ${BOLD}update${RESET}   Проверить обновления и установить при наличии"
+  echo ""
   exit 1
 }
+
+do_update() {
+  local target="$1"
+  [ "$(id -u)" -eq 0 ] || { echo -e "${RED}[ERR]${RESET}  Нужны права root: sudo mon $target update"; exit 1; }
+
+  local json latest_tag
+  json=$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null) \
+    || { echo -e "${RED}[ERR]${RESET}  Нет доступа к GitHub"; exit 1; }
+  latest_tag=$(echo "$json" | grep -o '"tag_name": *"[^"]*"' | head -1 | grep -o '"[^"]*"$' | tr -d '"')
+  [ -n "$latest_tag" ] || { echo -e "${RED}[ERR]${RESET}  Не удалось получить версию"; exit 1; }
+
+  if [ "$target" = "server" ]; then
+    local current=""
+    [ -f "$SERVER_VERSION" ] && current=$(cat "$SERVER_VERSION")
+    if [ "$current" = "$latest_tag" ]; then
+      echo -e "${YELLOW}[WARN]${RESET} Уже установлена актуальная версия ${BOLD}$current${RESET}"
+      read -rp "  Переустановить? [y/N]: " ans </dev/tty
+      [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
+    else
+      echo -e "  Доступно обновление: ${BOLD}${current:-не установлен}${RESET} -> ${BOLD}${latest_tag}${RESET}"
+      read -rp "  Обновить? [y/N]: " ans </dev/tty
+      [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
+    fi
+    local asset_url
+    asset_url=$(echo "$json" | grep -o '"browser_download_url": *"[^"]*mon-server-linux-amd64\.tar\.gz[^"]*"' | grep -o 'https://[^"]*')
+    [ -n "$asset_url" ] || { echo -e "${RED}[ERR]${RESET}  Артефакт сервера не найден в релизе $latest_tag"; exit 1; }
+    local tmp; tmp=$(mktemp -d)
+    echo -e "${CYAN}[INFO]${RESET} Загрузка $latest_tag..."
+    curl -fsSL --progress-bar -o "$tmp/server.tar.gz" "$asset_url"
+    tar -xzf "$tmp/server.tar.gz" -C "$tmp"
+    systemctl is-active --quiet mon-server 2>/dev/null && systemctl stop mon-server
+    install -Dm755 "$tmp/mon-server" "$SERVER_BIN"
+    mkdir -p "$SERVER_WEB"; rm -rf "${SERVER_WEB:?}"/*
+    cp -r "$tmp/web-dist/." "$SERVER_WEB/"
+    echo "$latest_tag" > "$SERVER_VERSION"
+    rm -rf "$tmp"
+    systemctl start mon-server
+    echo -e "${GREEN}[ OK ]${RESET} Сервер обновлён до ${BOLD}$latest_tag${RESET}"
+
+  else
+    local current=""
+    [ -f "$AGENT_VERSION" ] && current=$(cat "$AGENT_VERSION")
+    if [ "$current" = "$latest_tag" ]; then
+      echo -e "${YELLOW}[WARN]${RESET} Уже установлена актуальная версия ${BOLD}$current${RESET}"
+      read -rp "  Переустановить? [y/N]: " ans </dev/tty
+      [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
+    else
+      echo -e "  Доступно обновление: ${BOLD}${current:-не установлен}${RESET} -> ${BOLD}${latest_tag}${RESET}"
+      read -rp "  Обновить? [y/N]: " ans </dev/tty
+      [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
+    fi
+    local arch asset
+    arch=$(uname -m)
+    case "$arch" in
+      x86_64|amd64)  asset="mon-agent-linux" ;;
+      aarch64|arm64) asset="mon-agent-linux-arm64" ;;
+      *) echo -e "${RED}[ERR]${RESET}  Неподдерживаемая архитектура: $arch"; exit 1 ;;
+    esac
+    local asset_url
+    asset_url=$(echo "$json" | grep -o "\"browser_download_url\": *\"[^\"]*${asset}[^\"]*\"" | head -1 | grep -o 'https://[^"]*')
+    [ -n "$asset_url" ] || { echo -e "${RED}[ERR]${RESET}  Артефакт агента не найден в релизе $latest_tag"; exit 1; }
+    local tmp; tmp=$(mktemp -d)
+    echo -e "${CYAN}[INFO]${RESET} Загрузка $latest_tag..."
+    curl -fsSL --progress-bar -o "$tmp/mon-agent" "$asset_url"
+    systemctl is-active --quiet mon-agent 2>/dev/null && systemctl stop mon-agent
+    install -Dm755 "$tmp/mon-agent" "$AGENT_BIN"
+    echo "$latest_tag" > "$AGENT_VERSION"
+    rm -rf "$tmp"
+    systemctl start mon-agent
+    echo -e "${GREEN}[ OK ]${RESET} Агент обновлён до ${BOLD}$latest_tag${RESET}"
+  fi
+}
+
 [ $# -lt 2 ] && usage
 case "$1" in
   server) SVC="mon-server" ;;
@@ -246,11 +339,12 @@ case "$2" in
   enable)  systemctl enable  "$SVC" && echo -e "${GREEN}[OK]${RESET} Автозапуск включён" ;;
   disable) systemctl disable "$SVC" && echo -e "${GREEN}[OK]${RESET} Автозапуск выключен" ;;
   logs)    journalctl -fu    "$SVC" ;;
+  update)  do_update "$1" ;;
   *) echo -e "${RED}Неизвестная команда:${RESET} $2"; usage ;;
 esac
 MONEOF
   chmod +x /usr/local/bin/mon
-  ok "CLI: mon server|agent start|stop|restart|status|enable|disable|logs"
+  ok "CLI: mon server|agent start|stop|restart|status|enable|disable|logs|update"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────

@@ -57,6 +57,8 @@ curl -sSL https://raw.githubusercontent.com/RomanMusalikin/linkmus-monitor/main/
 ```bash
 mon server start|stop|restart|status|logs
 mon agent  start|stop|restart|status|logs
+mon server update   # проверить и установить обновление сервера
+mon agent  update   # проверить и установить обновление агента
 mon help
 ```
 
