@@ -93,6 +93,13 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; .\install-agent.ps1
 
 Логи агента: `C:\mon-agent\mon-agent.log` (ротация при достижении 5 МБ).
 
+После установки доступна команда `mon` из любого терминала:
+
+```powershell
+mon agent start|stop|restart|status|enable|disable|logs|update
+mon help
+```
+
 ---
 
 ## Метрики агента

@@ -173,8 +173,32 @@ if ($svcFinal -and $svcFinal.Status -eq 'Running') {
 # -- Version ------------------------------------------------------------------
 $latestTag | Set-Content -Path $VERSION_FILE -Encoding UTF8
 
+# -- Install mon CLI ----------------------------------------------------------
+Write-Step "Installing mon CLI..."
+
+$monPs1Src = Join-Path $SCRIPT_DIR "mon.ps1"
+if (Test-Path $monPs1Src) {
+    Copy-Item $monPs1Src "$INSTALL_DIR\mon.ps1" -Force
+} else {
+    # Download mon.ps1 from GitHub if not next to script
+    try {
+        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/$REPO/main/mon.ps1" `
+            -OutFile "$INSTALL_DIR\mon.ps1" -UseBasicParsing -ErrorAction Stop
+    } catch {
+        Write-Warn "Could not download mon.ps1: $_"
+    }
+}
+
+# Create mon.cmd shim in System32 so 'mon' works from any terminal
+$shimPath = "C:\Windows\System32\mon.cmd"
+@"
+@echo off
+powershell -NoProfile -ExecutionPolicy Bypass -File "$INSTALL_DIR\mon.ps1" %*
+"@ | Set-Content -Path $shimPath -Encoding ASCII
+Write-Ok "CLI: mon agent start|stop|restart|status|enable|disable|logs|update"
+
 Write-Host ""
 Write-Host "  Done! Agent installed." -ForegroundColor Green
-Write-Host "  Log:     $INSTALL_DIR\mon-agent.log" -ForegroundColor Gray
-Write-Host "  Manage:  Start-Service / Stop-Service / Restart-Service $SERVICE_NAME" -ForegroundColor Gray
+Write-Host "  Log:    $INSTALL_DIR\mon-agent.log" -ForegroundColor Gray
+Write-Host "  Usage:  mon agent start|stop|restart|status|logs|update" -ForegroundColor Gray
 Write-Host ""
