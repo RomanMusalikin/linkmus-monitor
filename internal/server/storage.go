@@ -114,6 +114,7 @@ func MigrateDB(db *sql.DB) {
 		`ALTER TABLE metrics ADD COLUMN tcp_timewait    INTEGER DEFAULT 0`,
 		`ALTER TABLE metrics ADD COLUMN disk_queue      REAL    DEFAULT 0`,
 		`ALTER TABLE metrics ADD COLUMN fsrm_json       TEXT    DEFAULT '[]'`,
+		`ALTER TABLE metrics ADD COLUMN agent_version   TEXT    DEFAULT ''`,
 	}
 	for _, stmt := range cols {
 		db.Exec(stmt)
@@ -161,8 +162,8 @@ func SaveMetric(db *sql.DB, p MetricPayload) error {
 		rdp_running, smb_running,
 		net_interface, net_bytes_recv, net_bytes_sent, all_ifaces_json,
 		tcp_total, tcp_established, tcp_timewait,
-		process_count, processes_json, top_mem_json, fsrm_json
-	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+		process_count, processes_json, top_mem_json, fsrm_json, agent_version
+	) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
 		p.NodeName, p.OS, p.IP, p.Uptime, p.BootTime, p.Timestamp, p.LoggedUsers,
 		p.CPUUsage, p.CPUUser, p.CPUSystem, p.CPUIOwait, p.CPUSteal, p.CPUTemp,
 		p.CPUModel, p.CPUFreqMHz, p.CPUCoresJSON,
@@ -172,7 +173,7 @@ func SaveMetric(db *sql.DB, p MetricPayload) error {
 		p.RDPRunning, p.SMBRunning,
 		p.NetInterface, p.NetBytesRecv, p.NetBytesSent, p.AllIfacesJSON,
 		p.TCPTotal, p.TCPEstablished, p.TCPTimeWait,
-		p.ProcessCount, p.ProcessesJSON, p.TopMemJSON, p.FSRMJson,
+		p.ProcessCount, p.ProcessesJSON, p.TopMemJSON, p.FSRMJson, p.AgentVersion,
 	)
 	return err
 }
@@ -199,6 +200,7 @@ type rawNodeRow struct {
 	tcpTotal, tcpEstab, tcpTW                       int
 	processCount                                    int
 	procsJSON, topMemJSON, fsrmJSON                 string
+	agentVersion                                    string
 }
 
 // GetLatestNodes возвращает последние метрики для всех узлов.
@@ -222,7 +224,8 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			COALESCE(m.tcp_total,0), COALESCE(m.tcp_established,0), COALESCE(m.tcp_timewait,0),
 			COALESCE(m.process_count,0),
 			COALESCE(m.processes_json,'[]'), COALESCE(m.top_mem_json,'[]'),
-			COALESCE(m.fsrm_json,'[]')
+			COALESCE(m.fsrm_json,'[]'),
+			COALESCE(m.agent_version,'')
 		FROM metrics m
 		INNER JOIN (
 			SELECT node_name, MAX(timestamp) AS ts
@@ -255,6 +258,7 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			&r.tcpTotal, &r.tcpEstab, &r.tcpTW,
 			&r.processCount,
 			&r.procsJSON, &r.topMemJSON, &r.fsrmJSON,
+			&r.agentVersion,
 		); err != nil {
 			log.Printf("Ошибка сканирования метрики: %v", err)
 			continue
@@ -351,6 +355,7 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			SNMPCPULoad:    snmp.CPULoad,
 			SNMPIfCount:    snmp.IfCount,
 			FSRM:           fsrmList,
+			AgentVersion:   r.agentVersion,
 			CPUHistory:     queryCPUHistory(db, r.name, full),
 			RAMHistory:     queryRAMHistory(db, r.name, full),
 			NetHistory:     queryNetHistory(db, r.name, full),

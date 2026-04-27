@@ -7,6 +7,7 @@ import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import { useNodes } from './hooks/useNodes';
 import { useAuth } from './hooks/useAuth';
+import { useVersion } from './hooks/useVersion';
 import { NodesContext } from './context/NodesContext';
 
 function AppShell({ onLogout }) {
@@ -16,14 +17,15 @@ function AppShell({ onLogout }) {
   const { data: nodes } = nodesState;
   const onlineCount = nodes?.filter(n => n.online).length ?? 0;
   const totalCount = nodes?.length ?? 0;
+  const serverVersion = useVersion();
 
   return (
-    <NodesContext.Provider value={nodesState}>
+    <NodesContext.Provider value={{ ...nodesState, serverVersion }}>
     <div className="flex h-screen bg-slate-900 text-slate-100 overflow-hidden relative">
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} toggleSidebar={toggleSidebar} nodes={nodes ?? []} />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <Header onlineCount={onlineCount} totalCount={totalCount} onLogout={onLogout} />
+        <Header onlineCount={onlineCount} totalCount={totalCount} onLogout={onLogout} version={serverVersion} />
         <main className="flex-1 overflow-x-hidden overflow-y-auto">
           <Routes>
             <Route path="/" element={<Dashboard />} />

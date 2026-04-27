@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Activity, LogOut } from 'lucide-react';
 import { logout } from '../../lib/api';
 
-export default function Header({ onlineCount = 0, totalCount = 0, onLogout }) {
+export default function Header({ onlineCount = 0, totalCount = 0, onLogout, version }) {
   const [time, setTime] = useState(new Date());
 
   useEffect(() => {
@@ -21,7 +21,10 @@ export default function Header({ onlineCount = 0, totalCount = 0, onLogout }) {
         <div className="hidden sm:flex bg-blue-500/20 p-2 rounded-lg">
           <Activity className="text-blue-500 w-5 h-5 sm:w-6 sm:h-6" />
         </div>
-        <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-100">LinkMus Monitor</h1>
+        <div>
+          <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-100">LinkMus Monitor</h1>
+          {version && <span className="text-xs text-slate-500">{version}</span>}
+        </div>
       </div>
 
       <div className="flex items-center gap-3 sm:gap-4">

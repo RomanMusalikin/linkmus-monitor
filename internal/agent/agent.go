@@ -81,7 +81,12 @@ type MetricPayload struct {
 	ProcessCount  int    `json:"process_count"`
 	ProcessesJSON string `json:"processes_json"`  // JSON топ-10 по CPU
 	TopMemJSON    string `json:"top_mem_json"`    // JSON топ-10 по RAM
+
+	AgentVersion string `json:"agent_version"`
 }
+
+// Version задаётся через ldflags при сборке: -X 'linkmus-monitor/internal/agent.Version=v1.2.0'
+var Version = "unknown"
 
 const maxLogSize = 5 * 1024 * 1024 // 5 МБ
 
@@ -239,6 +244,7 @@ func collectAndSend(t time.Time, serverURL string) {
 		ProcessCount:   processCount,
 		ProcessesJSON:  string(procsJSON),
 		TopMemJSON:     string(topMemJSON),
+		AgentVersion:   Version,
 	}
 
 	SendToServer(serverURL, payload)

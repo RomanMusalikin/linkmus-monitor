@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { deleteNode, fetchNodes } from '../lib/api';
 import { useNodesContext } from '../context/NodesContext';
+import { useVersion } from '../hooks/useVersion';
 import CpuGauge from '../components/charts/CpuGauge';
 import CpuHistory from '../components/charts/CpuHistory';
 import NetworkLines from '../components/charts/NetworkLines';
@@ -219,7 +220,7 @@ function ProcessesCard({ node, className }) {
 export default function NodeDetail() {
   const { nodeId } = useParams();
   const navigate = useNavigate();
-  const { data: nodes, loading, error } = useNodesContext();
+  const { data: nodes, loading, error, serverVersion } = useNodesContext();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [fullHistory, setFullHistory] = useState(null);
@@ -299,6 +300,14 @@ export default function NodeDetail() {
                 ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
                 {node.online ? 'Online' : `Offline · был ${node.lastSeen}`}
               </span>
+              {node.agentVersion && node.agentVersion !== 'unknown' && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium
+                  ${serverVersion && node.agentVersion === serverVersion
+                    ? 'bg-emerald-500/10 text-emerald-400/80'
+                    : 'bg-amber-500/10 text-amber-400'}`}>
+                  agent {node.agentVersion}
+                </span>
+              )}
             </div>
             <p className="text-slate-500 text-sm truncate">
               {getOSLabel(node.os)} · {node.ip || '—'} · ⬆ {node.uptime || '0 ч.'}

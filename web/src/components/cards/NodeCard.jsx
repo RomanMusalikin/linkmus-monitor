@@ -66,7 +66,20 @@ function ProbeDot({ label, active, ms }) {
   );
 }
 
-export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging }) {
+function AgentVersionBadge({ version, serverVersion }) {
+  if (!version || version === 'unknown') return null;
+  const upToDate = serverVersion && version === serverVersion;
+  return (
+    <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium
+      ${upToDate
+        ? 'bg-emerald-500/10 text-emerald-400/80'
+        : 'bg-amber-500/10 text-amber-400'}`}>
+      {version}
+    </span>
+  );
+}
+
+export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging, serverVersion }) {
   const isWindows = node.os?.toLowerCase().includes('windows');
   const ramPct = node.ramTotal > 0 ? (node.ramUsed / node.ramTotal) * 100 : 0;
   const [confirming, setConfirming] = useState(false);
@@ -141,7 +154,10 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging 
               <div className="font-semibold text-slate-100 text-sm leading-tight truncate max-w-[130px]">
                 {node.name}
               </div>
-              <div className="text-xs text-slate-500 mt-0.5">{getOSLabel(node.os)}</div>
+              <div className="flex items-center gap-1.5 mt-0.5">
+                <span className="text-xs text-slate-500">{getOSLabel(node.os)}</span>
+                <AgentVersionBadge version={node.agentVersion} serverVersion={serverVersion} />
+              </div>
             </div>
           </div>
 

@@ -25,7 +25,7 @@ function StatCard({ icon: Icon, label, value, sub, color = 'text-blue-400', bg =
   );
 }
 
-function SortableCard({ node, onDeleted }) {
+function SortableCard({ node, onDeleted, serverVersion }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.name });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -35,13 +35,13 @@ function SortableCard({ node, onDeleted }) {
   };
   return (
     <div ref={setNodeRef} style={style}>
-      <NodeCard node={node} onDeleted={onDeleted} isDragging={isDragging} dragHandleProps={{ ...attributes, ...listeners }} />
+      <NodeCard node={node} onDeleted={onDeleted} isDragging={isDragging} dragHandleProps={{ ...attributes, ...listeners }} serverVersion={serverVersion} />
     </div>
   );
 }
 
 export default function Dashboard() {
-  const { data: nodes, loading, error, refresh } = useNodesContext();
+  const { data: nodes, loading, error, refresh, serverVersion } = useNodesContext();
   const { sorted, handleDragEnd } = useNodeOrder(nodes);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -118,7 +118,7 @@ export default function Dashboard() {
           <SortableContext items={sorted.map(n => n.name)} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
               {sorted.map(node => (
-                <SortableCard key={node.name} node={node} onDeleted={refresh} />
+                <SortableCard key={node.name} node={node} onDeleted={refresh} serverVersion={serverVersion} />
               ))}
             </div>
           </SortableContext>

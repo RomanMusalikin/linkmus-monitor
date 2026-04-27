@@ -9,6 +9,9 @@ import (
 	"strings"
 )
 
+// Version задаётся через ldflags при сборке: -X 'linkmus-monitor/internal/server.Version=v1.2.0'
+var Version = "unknown"
+
 // MetricPayload — структура входящего JSON от агента (должна совпадать с agent.MetricPayload)
 type MetricPayload struct {
 	NodeName    string  `json:"node_name"`
@@ -61,6 +64,7 @@ type MetricPayload struct {
 	ProcessCount   int    `json:"process_count"`
 	ProcessesJSON  string `json:"processes_json"`
 	TopMemJSON     string `json:"top_mem_json"`
+	AgentVersion   string `json:"agent_version"`
 }
 
 var dbConn *sql.DB
@@ -101,6 +105,9 @@ func Run() {
 
 	// Агент — без авторизации
 	http.HandleFunc("/api/metrics", handleMetrics)
+
+	// Версия сервера — без авторизации
+	http.HandleFunc("/api/version", handleVersion)
 
 	// Данные узлов — только авторизованным
 	http.HandleFunc("/api/nodes", requireAuth(HandleNodes))
@@ -147,6 +154,12 @@ func handleMetrics(w http.ResponseWriter, r *http.Request) {
 	)
 
 	w.WriteHeader(http.StatusOK)
+}
+
+func handleVersion(w http.ResponseWriter, r *http.Request) {
+	corsHeaders(w)
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"version": Version})
 }
 
 // handleAuthSetup — GET /api/auth/setup

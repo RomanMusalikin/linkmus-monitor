@@ -136,7 +136,7 @@ switch ($command) {
         Write-Host ""
         if (Test-Path $LOG_FILE) {
             Write-Host "--- Last 20 log lines ---" -ForegroundColor DarkGray
-            Get-Content $LOG_FILE -Tail 20
+            Get-Content $LOG_FILE -Tail 20 -Encoding UTF8
             Write-Host "-------------------------" -ForegroundColor DarkGray
         }
         Write-Host ""
@@ -154,7 +154,7 @@ switch ($command) {
     "logs" {
         if (-not (Test-Path $LOG_FILE)) { Write-Err "Log file not found: $LOG_FILE"; exit 1 }
         Write-Info "Following $LOG_FILE (Ctrl+C to stop)..."
-        Get-Content $LOG_FILE -Wait -Tail 50
+        Get-Content $LOG_FILE -Wait -Tail 50 -Encoding UTF8
     }
     "update" {
         Do-Update

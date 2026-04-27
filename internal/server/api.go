@@ -149,6 +149,8 @@ type NodeSummary struct {
 	// FSRM (agent-side, Windows only)
 	FSRM []FSRMInfo `json:"fsrm"`
 
+	AgentVersion string `json:"agentVersion"`
+
 	// История (для графиков)
 	CPUHistory []CpuPoint `json:"cpuHistory"`
 	RAMHistory []RamPoint `json:"ramHistory"`
