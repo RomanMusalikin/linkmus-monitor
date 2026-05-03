@@ -102,6 +102,7 @@ func Run() {
 	StartSNMPPoller(dbConn)
 	StartNodesCache(dbConn)
 	StartDataCleanup(dbConn)
+	StartHourlyAggregator(dbConn)
 
 	// Агент — без авторизации
 	http.HandleFunc("/api/metrics", handleMetrics)
@@ -112,6 +113,7 @@ func Run() {
 	// Данные узлов — только авторизованным
 	http.HandleFunc("/api/nodes", requireAuth(HandleNodes))
 	http.HandleFunc("/api/nodes/", requireAuth(HandleNodeDelete))
+	http.HandleFunc("/api/history/", requireAuth(HandleNodeHistory))
 
 	// Auth-эндпоинты
 	http.HandleFunc("/api/auth/setup", handleAuthSetup)

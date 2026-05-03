@@ -81,6 +81,23 @@ func InitDB(filepath string) *sql.DB {
 		log.Fatalf("❌ Ошибка создания таблицы node_aliases: %v", err)
 	}
 
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS metrics_hourly (
+		node_name    TEXT    NOT NULL,
+		hour         TEXT    NOT NULL,
+		avg_cpu      REAL    DEFAULT 0,
+		avg_ram      REAL    DEFAULT 0,
+		avg_ram_total REAL   DEFAULT 0,
+		avg_disk     REAL    DEFAULT 0,
+		avg_net_recv REAL    DEFAULT 0,
+		avg_net_sent REAL    DEFAULT 0,
+		PRIMARY KEY (node_name, hour)
+	)`)
+	if err != nil {
+		log.Fatalf("❌ Ошибка создания таблицы metrics_hourly: %v", err)
+	}
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_hourly_node_hour ON metrics_hourly(node_name, hour)`)
+
 	MigrateDB(db)
 
 	log.Println("✅ База данных инициализирована")

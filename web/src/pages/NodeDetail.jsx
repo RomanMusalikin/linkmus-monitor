@@ -5,7 +5,7 @@ import {
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
   Wifi, MemoryStick, Trash2, Download
 } from 'lucide-react';
-import { deleteNode, fetchNodes } from '../lib/api';
+import { deleteNode, fetchNodes, fetchNodeHistory } from '../lib/api';
 import { useNodesContext } from '../context/NodesContext';
 import { useVersion } from '../hooks/useVersion';
 import CpuGauge from '../components/charts/CpuGauge';
@@ -225,6 +225,33 @@ export default function NodeDetail() {
   const [deleting, setDeleting] = useState(false);
   const [fullHistory, setFullHistory] = useState(null);
   const [loadingFull, setLoadingFull] = useState(false);
+  const [historyRange, setHistoryRange] = useState('24h');
+  const [longHistory, setLongHistory] = useState(null);
+  const [loadingLong, setLoadingLong] = useState(false);
+
+  async function selectHistoryRange(range) {
+    setHistoryRange(range);
+    if (range === '24h') {
+      if (!fullHistory) {
+        setLoadingFull(true);
+        try {
+          const all = await fetchNodes(true);
+          setFullHistory((all || []).find(n => n.name === nodeId) || null);
+        } finally {
+          setLoadingFull(false);
+        }
+      }
+      setLongHistory(null);
+      return;
+    }
+    setLoadingLong(true);
+    try {
+      const data = await fetchNodeHistory(nodeId, range);
+      setLongHistory(data || []);
+    } finally {
+      setLoadingLong(false);
+    }
+  }
 
   async function toggleFullHistory() {
     if (fullHistory) { setFullHistory(null); return; }
@@ -374,17 +401,25 @@ export default function NodeDetail() {
                 className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">JSON</button>
             </div>
           </div>
-          <button
-            onClick={toggleFullHistory}
-            disabled={loadingFull}
-            className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
-              ${fullHistory
-                ? 'bg-violet-500/15 text-violet-400 border-violet-500/30'
-                : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-violet-400 hover:border-violet-500/30 hover:bg-violet-500/10'}`}
-          >
-            <TrendingUp className="w-4 h-4" />
-            {loadingFull ? 'Загрузка...' : fullHistory ? 'Скрыть историю' : 'История за сутки'}
-          </button>
+          <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden text-sm">
+            {[
+              { key: 'live', label: 'Сейчас' },
+              { key: '24h',  label: '24ч' },
+              { key: '7d',   label: '7д' },
+              { key: '30d',  label: '30д' },
+              { key: '90d',  label: '90д' },
+            ].map(({ key, label }) => (
+              <button key={key}
+                onClick={() => key === 'live' ? (setHistoryRange('live'), setFullHistory(null), setLongHistory(null)) : selectHistoryRange(key)}
+                disabled={loadingFull || loadingLong}
+                className={`px-3 py-1.5 font-medium transition-all
+                  ${historyRange === key
+                    ? 'bg-violet-500/20 text-violet-400'
+                    : 'text-slate-500 hover:text-slate-300'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
 
         {!node.online && (
           <div className="flex items-center gap-2">
@@ -430,6 +465,105 @@ export default function NodeDetail() {
           : <TopStat label="Аптайм" value={node.uptime || '—'} color="text-slate-400" />
         }
       </div>
+
+      {/* ── Долгосрочная история (7д / 30д / 90д) ── */}
+      {longHistory && longHistory.length > 0 && (
+        <div className="mb-6 bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+          <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-4">
+            История за {historyRange === '7d' ? '7 дней' : historyRange === '30d' ? '30 дней' : '90 дней'}
+            <span className="ml-2 text-slate-600 normal-case">· {longHistory.length} точек (по часам)</span>
+          </div>
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+            {/* CPU */}
+            <div>
+              <div className="text-xs text-slate-500 mb-1">CPU %</div>
+              <ResponsiveContainer width="100%" height={80}>
+                <AreaChart data={longHistory} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="lhCpu" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="time" hide />
+                  <YAxis domain={[0, 100]} hide />
+                  <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                    formatter={v => [`${v.toFixed(1)}%`, 'CPU']} labelStyle={{ color: '#64748b' }} />
+                  <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhCpu)" dot={false} isAnimationActive={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            {/* RAM */}
+            <div>
+              <div className="text-xs text-slate-500 mb-1">RAM GB</div>
+              <ResponsiveContainer width="100%" height={80}>
+                <AreaChart data={longHistory} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="lhRam" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="time" hide />
+                  <YAxis hide />
+                  <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                    formatter={v => [`${v.toFixed(2)} GB`, 'RAM']} labelStyle={{ color: '#64748b' }} />
+                  <Area type="monotone" dataKey="ram" stroke="#8b5cf6" strokeWidth={1.5} fill="url(#lhRam)" dot={false} isAnimationActive={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            {/* Disk */}
+            <div>
+              <div className="text-xs text-slate-500 mb-1">Диск %</div>
+              <ResponsiveContainer width="100%" height={80}>
+                <AreaChart data={longHistory} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="lhDisk" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="time" hide />
+                  <YAxis domain={[0, 100]} hide />
+                  <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                    formatter={v => [`${v.toFixed(1)}%`, 'Диск']} labelStyle={{ color: '#64748b' }} />
+                  <Area type="monotone" dataKey="disk" stroke="#f59e0b" strokeWidth={1.5} fill="url(#lhDisk)" dot={false} isAnimationActive={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+            {/* Network */}
+            <div>
+              <div className="text-xs text-slate-500 mb-1">Сеть B/s</div>
+              <ResponsiveContainer width="100%" height={80}>
+                <AreaChart data={longHistory} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="lhRecv" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                    </linearGradient>
+                    <linearGradient id="lhSent" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
+                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                    </linearGradient>
+                  </defs>
+                  <XAxis dataKey="time" hide />
+                  <YAxis hide />
+                  <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                    formatter={(v, name) => [fmtBytes(v), name === 'netRecv' ? '↓' : '↑']} labelStyle={{ color: '#64748b' }} />
+                  <Area type="monotone" dataKey="netRecv" stroke="#06b6d4" strokeWidth={1.5} fill="url(#lhRecv)" dot={false} isAnimationActive={false} />
+                  <Area type="monotone" dataKey="netSent" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhSent)" dot={false} isAnimationActive={false} />
+                </AreaChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {longHistory && longHistory.length === 0 && (
+        <div className="mb-6 bg-slate-800/40 rounded-2xl border border-slate-700/30 p-5 text-center text-slate-500 text-sm">
+          Нет данных за выбранный период. История накапливается — данные появятся после первого часа работы сервера.
+        </div>
+      )}
 
       {/* ── Основная сетка ── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">

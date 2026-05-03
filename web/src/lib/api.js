@@ -57,6 +57,15 @@ export async function login(loginVal, password) {
   localStorage.setItem('mon_token', data.token);
 }
 
+export async function fetchNodeHistory(name, range) {
+  const res = await fetch(`${API_BASE}/history/${encodeURIComponent(name)}?range=${range}`, {
+    headers: authHeaders(),
+  });
+  if (res.status === 401) throw Object.assign(new Error('unauthorized'), { status: 401 });
+  if (!res.ok) throw new Error('Ошибка получения истории');
+  return res.json();
+}
+
 export async function renameNode(name, alias) {
   const res = await fetch(`${API_BASE}/nodes/${encodeURIComponent(name)}/alias`, {
     method: 'PUT',
