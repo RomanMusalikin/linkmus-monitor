@@ -294,7 +294,7 @@ export default function NodeDetail() {
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-slate-100">{node.name}</h1>
+              <h1 className="text-xl font-bold text-slate-100">{node.displayName || node.name}</h1>
               <span className={`w-2 h-2 rounded-full ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium
                 ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
@@ -684,6 +684,9 @@ export default function NodeDetail() {
         <Card title="Система" icon={TrendingUp} iconColor="text-slate-400">
           <div className="space-y-1">
             <InfoRow label="Имя хоста" value={node.name} />
+            {node.displayName && node.displayName !== node.name && (
+              <InfoRow label="Псевдоним" value={node.displayName} />
+            )}
             <InfoRow label="IP-адрес" value={node.ip || '—'} />
             <InfoRow label="ОС" value={getOSLabel(node.os)} />
             {node.cpuModel && <InfoRow label="Процессор" value={node.cpuModel} />}

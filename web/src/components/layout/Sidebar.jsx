@@ -25,14 +25,14 @@ function SortableNode({ node, isOpen, isActive, isPinned, onTogglePin, onClick }
         className={`flex items-center rounded-lg transition-colors overflow-hidden ${
           isActive ? 'bg-slate-700 text-slate-100' : 'text-slate-400 hover:bg-slate-700/50 hover:text-slate-200'
         } ${isOpen ? 'px-3 py-2 gap-3 pr-16' : 'justify-center p-3'}`}
-        title={node.name}
+        title={node.displayName || node.name}
       >
         <div className="relative flex items-center justify-center flex-shrink-0">
           <div className={`w-2.5 h-2.5 rounded-full ${node.online ? 'bg-green-500' : 'bg-red-500'}`} />
         </div>
         <span className={`text-sm whitespace-nowrap transition-all duration-300 overflow-hidden flex-1 min-w-0 truncate
           ${isOpen ? 'opacity-100 max-w-[120px]' : 'opacity-0 max-w-0'}`}>
-          {node.name}
+          {node.displayName || node.name}
         </span>
       </Link>
 

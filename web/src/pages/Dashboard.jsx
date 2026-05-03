@@ -84,7 +84,7 @@ export default function Dashboard() {
           sub={total > 0 ? `${Math.round(online.length/total*100)}% доступно` : '—'}
           color="text-emerald-400" bg="bg-emerald-500/10" />
         <StatCard icon={AlertTriangle} label="Оффлайн" value={offline.length}
-          sub={offline.length > 0 ? offline.map(n => n.name).join(', ') : 'Все в сети'}
+          sub={offline.length > 0 ? offline.map(n => n.displayName || n.name).join(', ') : 'Все в сети'}
           color={offline.length > 0 ? 'text-red-400' : 'text-slate-400'}
           bg={offline.length > 0 ? 'bg-red-500/10' : 'bg-slate-700/50'} />
         <StatCard icon={Cpu} label="CPU (среднее)" value={`${avgCPU}%`}
