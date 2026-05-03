@@ -22,8 +22,8 @@ type FSRMInfo struct {
 
 type msftFSRMQuota struct {
 	Path      string
-	Size      int64  // лимит в байтах
-	Usage     int64  // использовано в байтах
+	Size      uint64
+	Usage     uint64
 	SoftLimit bool
 }
 
@@ -42,6 +42,7 @@ func CollectFSRM() []FSRMInfo {
 		&quotas,
 		`root\Microsoft\Windows\FSRM`,
 	); err != nil {
+		fmt.Printf("⚠️  FSRM WMI error: %v — falling back to event log\n", err)
 		return collectFSRMFallback()
 	}
 	if len(quotas) == 0 {
@@ -59,8 +60,8 @@ func CollectFSRM() []FSRMInfo {
 		}
 		info := FSRMInfo{
 			QuotaPath:        q.Path,
-			QuotaLimitBytes:  q.Size,
-			QuotaUsedBytes:   q.Usage,
+			QuotaLimitBytes:  int64(q.Size),
+			QuotaUsedBytes:   int64(q.Usage),
 			QuotaUsedPercent: pct,
 		}
 		// Сопоставляем нарушения по пути
