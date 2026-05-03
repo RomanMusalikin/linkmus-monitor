@@ -29,6 +29,12 @@ type NetPoint struct {
 	Time string   `json:"time"`
 }
 
+// DiskPoint — одна точка истории диска (Value=nil означает отсутствие данных)
+type DiskPoint struct {
+	Value *int   `json:"value"`
+	Time  string `json:"time"`
+}
+
 // ProcessInfo — информация об одном процессе
 type ProcessInfo struct {
 	PID  int32   `json:"pid"`
@@ -153,9 +159,10 @@ type NodeSummary struct {
 	AgentVersion string `json:"agentVersion"`
 
 	// История (для графиков)
-	CPUHistory []CpuPoint `json:"cpuHistory"`
-	RAMHistory []RamPoint `json:"ramHistory"`
-	NetHistory []NetPoint `json:"netHistory"`
+	CPUHistory  []CpuPoint  `json:"cpuHistory"`
+	RAMHistory  []RamPoint  `json:"ramHistory"`
+	NetHistory  []NetPoint  `json:"netHistory"`
+	DiskHistory []DiskPoint `json:"diskHistory"`
 }
 
 // nodesCache — кэш результата GetLatestNodes(full=false).

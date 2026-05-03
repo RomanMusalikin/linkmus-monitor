@@ -401,9 +401,10 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			SNMPIfCount:    snmp.IfCount,
 			FSRM:           fsrmList,
 			AgentVersion:   r.agentVersion,
-			CPUHistory:     queryCPUHistory(db, r.name, full),
-			RAMHistory:     queryRAMHistory(db, r.name, full),
-			NetHistory:     queryNetHistory(db, r.name, full),
+			CPUHistory:  queryCPUHistory(db, r.name, full),
+			RAMHistory:  queryRAMHistory(db, r.name, full),
+			NetHistory:  queryNetHistory(db, r.name, full),
+			DiskHistory: queryDiskHistory(db, r.name, full),
 		})
 	}
 
@@ -670,6 +671,88 @@ func queryNetHistory(db *sql.DB, name string, full bool) []NetPoint {
 			result = append(result, NetPoint{Recv: &r, Sent: &s, Time: label})
 		} else {
 			result = append(result, NetPoint{Recv: nil, Sent: nil, Time: label})
+		}
+	}
+	return result
+}
+
+func queryDiskHistory(db *sql.DB, name string, full bool) []DiskPoint {
+	if !full {
+		rows, err := db.Query(
+			`SELECT disk_usage, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		if err != nil {
+			return nil
+		}
+		defer rows.Close()
+		var temp []struct {
+			v  int
+			ts string
+		}
+		for rows.Next() {
+			var v float64
+			var ts string
+			if err := rows.Scan(&v, &ts); err == nil {
+				temp = append(temp, struct {
+					v  int
+					ts string
+				}{int(v), ts})
+			}
+		}
+		result := make([]DiskPoint, len(temp))
+		for i, r := range temp {
+			v := r.v
+			result[len(temp)-1-i] = DiskPoint{Value: &v, Time: formatHistoryTime(r.ts)}
+		}
+		return result
+	}
+
+	rows, err := db.Query(
+		`SELECT disk_usage, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var vals []float64
+	var times []time.Time
+	for rows.Next() {
+		var v float64
+		var ts string
+		if err := rows.Scan(&v, &ts); err == nil {
+			if t, err := time.Parse(time.RFC3339, ts); err == nil {
+				vals = append(vals, v)
+				times = append(times, t)
+			}
+		}
+	}
+	if len(vals) == 0 {
+		return nil
+	}
+
+	now := time.Now().Local()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+	type bucket struct{ sum float64; n int }
+	grid := make(map[time.Time]*bucket)
+	for i, t := range times {
+		key := t.Local().Truncate(dayBucketDur)
+		if key.Before(start) {
+			continue
+		}
+		if grid[key] == nil {
+			grid[key] = &bucket{}
+		}
+		grid[key].sum += vals[i]
+		grid[key].n++
+	}
+
+	var result []DiskPoint
+	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
+		label := t.Format("15:04")
+		if b := grid[t]; b != nil {
+			avg := int(b.sum / float64(b.n))
+			result = append(result, DiskPoint{Value: &avg, Time: label})
+		} else {
+			result = append(result, DiskPoint{Value: nil, Time: label})
 		}
 	}
 	return result

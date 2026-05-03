@@ -3,7 +3,7 @@ import { useState } from 'react';
 import {
   ArrowLeft, Cpu, Database, HardDrive, Globe,
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
-  Wifi, MemoryStick, Trash2
+  Wifi, MemoryStick, Trash2, Download
 } from 'lucide-react';
 import { deleteNode, fetchNodes } from '../lib/api';
 import { useNodesContext } from '../context/NodesContext';
@@ -237,6 +237,48 @@ export default function NodeDetail() {
     }
   }
 
+  function handleExport(format) {
+    const n = fullHistory || node;
+    if (!n) return;
+    if (format === 'json') {
+      const blob = new Blob([JSON.stringify(n, null, 2)], { type: 'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${n.name}_${new Date().toISOString().slice(0,10)}.json`;
+      a.click();
+    } else {
+      const rows = [
+        ['Метрика', 'Значение'],
+        ['Узел', n.name],
+        ['Псевдоним', n.displayName || ''],
+        ['ОС', n.os || ''],
+        ['IP', n.ip || ''],
+        ['Аптайм', n.uptime || ''],
+        ['CPU %', n.cpu ?? ''],
+        ['RAM GB', n.ramUsed ?? ''],
+        ['RAM всего GB', n.ramTotal ?? ''],
+        ['Диск %', n.diskUsage ?? ''],
+        ['Сеть ↓ B/s', n.netRecvSec ?? ''],
+        ['Сеть ↑ B/s', n.netSentSec ?? ''],
+        ['TCP установлено', n.tcpEstablished ?? ''],
+        ['TCP всего', n.tcpTotal ?? ''],
+        ['Процессов', n.processCount ?? ''],
+        ['Темп CPU °C', n.cpuTemp ?? ''],
+        ['SSH', n.sshReachable ? 'да' : 'нет'],
+        ['RDP', n.rdpReachable ? 'да' : 'нет'],
+        ['SMB', n.smbReachable ? 'да' : 'нет'],
+        ['HTTP', n.httpReachable ? 'да' : 'нет'],
+        ['DNS', n.dnsReachable ? 'да' : 'нет'],
+      ];
+      const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = `${n.name}_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+    }
+  }
+
   async function handleDelete() {
     if (!confirmDelete) { setConfirmDelete(true); return; }
     setDeleting(true);
@@ -318,6 +360,20 @@ export default function NodeDetail() {
 
         {/* Кнопки в правой части заголовка */}
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
+          <div className="relative group/export">
+            <button className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
+              bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600">
+              <Download className="w-4 h-4" />
+              Экспорт
+            </button>
+            <div className="absolute right-0 top-full mt-1 hidden group-hover/export:flex flex-col z-10
+              bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden min-w-[120px]">
+              <button onClick={() => handleExport('csv')}
+                className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">CSV</button>
+              <button onClick={() => handleExport('json')}
+                className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">JSON</button>
+            </div>
+          </div>
           <button
             onClick={toggleFullHistory}
             disabled={loadingFull}
@@ -610,6 +666,32 @@ export default function NodeDetail() {
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Disk history */}
+            {(node.diskHistory || []).length > 1 && (
+              <div className="pt-3 border-t border-slate-700/40">
+                <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Заполнение диска</div>
+                <ResponsiveContainer width="100%" height={60}>
+                  <AreaChart data={(node.diskHistory || []).filter(p => p.value != null).map(p => ({ time: p.time, value: p.value }))}
+                    margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="diskGrad" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="time" hide />
+                    <Tooltip
+                      contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                      formatter={v => [`${v}%`, 'Диск']}
+                      labelStyle={{ color: '#64748b' }}
+                    />
+                    <Area type="monotone" dataKey="value" stroke="#f59e0b" strokeWidth={1.5}
+                      fill="url(#diskGrad)" dot={false} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
               </div>
             )}
           </div>

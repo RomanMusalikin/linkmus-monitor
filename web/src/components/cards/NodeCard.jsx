@@ -148,9 +148,10 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
           e.preventDefault();
         }
       }}
-      className="group bg-slate-800/80 backdrop-blur-sm rounded-2xl border border-slate-700/50
-                 hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5
-                 transition-all duration-200 block relative overflow-hidden"
+      className={`group backdrop-blur-sm rounded-2xl border transition-all duration-200 block relative overflow-hidden
+        ${node.online
+          ? 'bg-slate-800/80 border-slate-700/50 hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5'
+          : 'bg-slate-900/60 border-red-900/40 hover:border-red-700/40'}`}
     >
       {/* Цветная полоска сверху по статусу */}
       <div className={`h-0.5 w-full ${node.online ? 'bg-gradient-to-r from-emerald-500/60 to-blue-500/40' : 'bg-slate-700'}`} />
@@ -289,8 +290,13 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
           {isWindows && <ProbeDot label="WinRM" active={node.winrmReachable} ms={node.winrmMs} />}
           <ProbeDot label="DNS"  active={node.dnsReachable}  ms={node.dnsMs} />
           {(node.cpuTemp || 0) > 0 && (
-            <span className="text-xs text-amber-400/80 ml-auto self-center">
-              🌡 {Math.round(node.cpuTemp)}°C
+            <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border font-medium ml-auto
+              ${node.cpuTemp > 80
+                ? 'bg-red-500/10 border-red-500/20 text-red-400'
+                : node.cpuTemp > 60
+                  ? 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                  : 'bg-slate-700/40 border-slate-600/20 text-slate-400'}`}>
+              {Math.round(node.cpuTemp)}°C
             </span>
           )}
         </div>
