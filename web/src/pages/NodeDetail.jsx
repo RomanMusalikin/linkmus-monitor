@@ -788,7 +788,7 @@ export default function NodeDetail() {
         {node.snmpCollected && (
           <Card title="SNMP" icon={Activity} iconColor="text-cyan-400">
             <div className="space-y-1">
-              {node.snmpSysName && <InfoRow label="Системное имя" value={node.snmpSysName} />}
+              {node.snmpSysName && node.snmpSysName !== '0' && <InfoRow label="Системное имя" value={node.snmpSysName} />}
               {node.snmpSysUpTime > 0 && (
                 <InfoRow label="Аптайм (SNMP)" value={`${Math.floor(node.snmpSysUpTime / 3600)} ч. ${Math.floor((node.snmpSysUpTime % 3600) / 60)} мин.`} />
               )}
