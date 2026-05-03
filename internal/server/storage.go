@@ -72,6 +72,15 @@ func InitDB(filepath string) *sql.DB {
 		log.Fatalf("❌ Ошибка создания таблицы: %v", err)
 	}
 
+	_, err = db.Exec(`
+	CREATE TABLE IF NOT EXISTS node_aliases (
+		node_name TEXT PRIMARY KEY,
+		alias     TEXT NOT NULL
+	)`)
+	if err != nil {
+		log.Fatalf("❌ Ошибка создания таблицы node_aliases: %v", err)
+	}
+
 	MigrateDB(db)
 
 	log.Println("✅ База данных инициализирована")
@@ -148,6 +157,34 @@ func StartDataCleanup(db *sql.DB) {
 			}
 		}
 	}()
+}
+
+func GetAllAliases(db *sql.DB) map[string]string {
+	rows, err := db.Query(`SELECT node_name, alias FROM node_aliases`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	m := make(map[string]string)
+	for rows.Next() {
+		var name, alias string
+		if rows.Scan(&name, &alias) == nil {
+			m[name] = alias
+		}
+	}
+	return m
+}
+
+func SetNodeAlias(db *sql.DB, name, alias string) error {
+	if alias == "" {
+		_, err := db.Exec(`DELETE FROM node_aliases WHERE node_name = ?`, name)
+		return err
+	}
+	_, err := db.Exec(
+		`INSERT INTO node_aliases(node_name, alias) VALUES(?,?) ON CONFLICT(node_name) DO UPDATE SET alias=excluded.alias`,
+		name, alias,
+	)
+	return err
 }
 
 func SaveMetric(db *sql.DB, p MetricPayload) error {
@@ -267,6 +304,8 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 	}
 	rows.Close() // явно закрываем до history-запросов
 
+	aliases := GetAllAliases(db)
+
 	var nodes []NodeSummary
 	for _, r := range raws {
 		online := false
@@ -292,9 +331,15 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 		probe := GetProbe(r.ip)
 		snmp := GetSNMP(r.ip)
 
+		displayName := r.name
+		if a, ok := aliases[r.name]; ok && a != "" {
+			displayName = a
+		}
+
 		nodes = append(nodes, NodeSummary{
-			Name:     r.name,
-			OS:       r.os_,
+			Name:        r.name,
+			DisplayName: displayName,
+			OS:          r.os_,
 			IP:       r.ip,
 			Online:   online,
 			LastSeen: lastSeen,

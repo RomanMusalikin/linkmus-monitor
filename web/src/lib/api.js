@@ -57,6 +57,15 @@ export async function login(loginVal, password) {
   localStorage.setItem('mon_token', data.token);
 }
 
+export async function renameNode(name, alias) {
+  const res = await fetch(`${API_BASE}/nodes/${encodeURIComponent(name)}/alias`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify({ alias }),
+  });
+  if (!res.ok) throw new Error('Ошибка переименования узла');
+}
+
 export async function deleteNode(name) {
   const res = await fetch(`${API_BASE}/nodes/${encodeURIComponent(name)}`, {
     method: 'DELETE',

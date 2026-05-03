@@ -67,8 +67,9 @@ type NetIfaceInfo struct {
 
 // NodeSummary — полный набор данных по узлу, отдаваемый фронтенду
 type NodeSummary struct {
-	Name     string `json:"name"`
-	OS       string `json:"os"`
+	Name        string `json:"name"`
+	DisplayName string `json:"displayName"`
+	OS          string `json:"os"`
 	IP       string `json:"ip"`
 	Online   bool   `json:"online"`
 	LastSeen string `json:"lastSeen"`
@@ -189,20 +190,60 @@ func StartNodesCache(db *sql.DB) {
 	}()
 }
 
+func InvalidateNodesCache(db *sql.DB) {
+	go func() {
+		nodes, err := GetLatestNodes(db, false)
+		if err != nil {
+			return
+		}
+		nodesCacheMu.Lock()
+		nodesCacheData = nodes
+		nodesCacheAge = time.Now()
+		nodesCacheMu.Unlock()
+	}()
+}
+
 func getCachedNodes() ([]NodeSummary, time.Time) {
 	nodesCacheMu.RLock()
 	defer nodesCacheMu.RUnlock()
 	return nodesCacheData, nodesCacheAge
 }
 
-// HandleNodeDelete — DELETE /api/nodes/{name}
+// HandleNodeAction — DELETE /api/nodes/{name}  |  PUT /api/nodes/{name}/alias
 func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
+
+	rest := strings.TrimPrefix(r.URL.Path, "/api/nodes/")
+
+	// PUT /api/nodes/{name}/alias
+	if strings.HasSuffix(rest, "/alias") && r.Method == http.MethodPut {
+		name := strings.TrimSuffix(rest, "/alias")
+		if name == "" {
+			http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
+			return
+		}
+		var body struct {
+			Alias string `json:"alias"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+			return
+		}
+		if err := SetNodeAlias(dbConn, name, strings.TrimSpace(body.Alias)); err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		InvalidateNodesCache(dbConn)
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// DELETE /api/nodes/{name}
 	if r.Method != http.MethodDelete {
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 		return
 	}
-	name := strings.TrimPrefix(r.URL.Path, "/api/nodes/")
+	name := rest
 	if name == "" {
 		http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
 		return

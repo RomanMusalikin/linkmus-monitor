@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Monitor, Terminal, Trash2, Wifi, GripVertical } from 'lucide-react';
+import { Monitor, Terminal, Trash2, Wifi, GripVertical, Pencil, Check, X } from 'lucide-react';
 import Sparkline from '../charts/Sparkline';
-import { deleteNode } from '../../lib/api';
+import { deleteNode, renameNode } from '../../lib/api';
 
 function getOSLabel(os) {
   if (!os) return 'Unknown OS';
@@ -84,6 +84,9 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
   const ramPct = node.ramTotal > 0 ? (node.ramUsed / node.ramTotal) * 100 : 0;
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef(null);
   const wasDraggingRef = useRef(false);
 
   useEffect(() => {
@@ -108,6 +111,30 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
     e.preventDefault();
     e.stopPropagation();
     setConfirming(false);
+  }
+
+  function handleStartRename(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setRenameValue(node.displayName || node.name);
+    setRenaming(true);
+    setTimeout(() => renameInputRef.current?.select(), 0);
+  }
+
+  async function handleConfirmRename(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    const alias = renameValue.trim();
+    try {
+      await renameNode(node.name, alias === node.name ? '' : alias);
+    } catch { /* ignore */ }
+    setRenaming(false);
+  }
+
+  function handleCancelRename(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    setRenaming(false);
   }
 
   const netTotal = (node.netRecvSec || 0) + (node.netSentSec || 0);
@@ -151,9 +178,32 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
                 ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
             </div>
             <div className="min-w-0">
-              <div className="font-semibold text-slate-100 text-sm leading-tight truncate max-w-[130px]">
-                {node.name}
-              </div>
+              {renaming ? (
+                <div className="flex items-center gap-1" onClick={e => e.preventDefault()}>
+                  <input
+                    ref={renameInputRef}
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleConfirmRename(e); if (e.key === 'Escape') handleCancelRename(e); }}
+                    className="text-sm font-semibold bg-slate-700 text-slate-100 rounded px-1.5 py-0.5 outline-none border border-blue-500/50 w-32"
+                    maxLength={64}
+                  />
+                  <button onClick={handleConfirmRename} className="text-emerald-400 hover:text-emerald-300"><Check className="w-3.5 h-3.5" /></button>
+                  <button onClick={handleCancelRename} className="text-slate-500 hover:text-slate-300"><X className="w-3.5 h-3.5" /></button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1 group/name">
+                  <div className="font-semibold text-slate-100 text-sm leading-tight truncate max-w-[130px]">
+                    {node.displayName || node.name}
+                  </div>
+                  <button
+                    onClick={handleStartRename}
+                    className="opacity-0 group-hover/name:opacity-100 transition-opacity text-slate-600 hover:text-slate-400"
+                  >
+                    <Pencil className="w-3 h-3" />
+                  </button>
+                </div>
+              )}
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-xs text-slate-500">{getOSLabel(node.os)}</span>
                 <AgentVersionBadge version={node.agentVersion} serverVersion={serverVersion} />
