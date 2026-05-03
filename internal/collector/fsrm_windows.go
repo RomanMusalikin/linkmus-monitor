@@ -21,10 +21,9 @@ type FSRMInfo struct {
 }
 
 type msftFSRMQuota struct {
-	Path      string
-	Size      uint64
-	Usage     uint64
-	SoftLimit bool
+	Path  string
+	Size  uint64
+	Usage uint64
 }
 
 type win32NTLogEvent struct {

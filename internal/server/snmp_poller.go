@@ -106,9 +106,11 @@ func pollSNMP(ip string) SNMPResult {
 				res.SysUpTimeSec = v / 100 // TimeTicks -> секунды
 			}
 		case ".1.3.6.1.2.1.1.5.0":
-			res.SysName = gosnmp.ToBigInt(pdu.Value).String()
-			if s, ok := pdu.Value.(string); ok {
-				res.SysName = s
+			switch v := pdu.Value.(type) {
+			case string:
+				res.SysName = v
+			case []byte:
+				res.SysName = string(v)
 			}
 		case ".1.3.6.1.2.1.25.3.3.1.2.1":
 			if v := gosnmp.ToBigInt(pdu.Value); v != nil {
