@@ -41,3 +41,6 @@ desktop.ini
 
 # --- Claude Code ---
 .claude/
+
+# --- Личные заметки ---
+INTERNALS.md
