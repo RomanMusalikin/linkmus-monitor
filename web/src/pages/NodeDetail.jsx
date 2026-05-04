@@ -615,54 +615,92 @@ export default function NodeDetail() {
 
         {/* ── CPU — широкий блок ── */}
         <Card title="Процессор (CPU)" icon={Cpu} iconColor="text-blue-400" className="xl:col-span-2">
-          {/* Верхняя строка: большой % слева + метрики справа + график */}
           <div className="flex gap-4 mb-4">
-            {/* Левая колонка: текущая нагрузка крупно */}
-            <div className="flex-shrink-0 flex flex-col items-center justify-center bg-slate-900/60 rounded-2xl border border-slate-700/30 px-5 py-4 min-w-[100px]">
-              <div className={`text-4xl font-black tabular-nums leading-none ${colorByPct(node.cpu)}`}>
-                {Math.round(node.cpu || 0)}%
-              </div>
-              <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">CPU</div>
-              {node.cpuFreqMHz > 0 && (
-                <div className="text-xs text-slate-400 mt-2 tabular-nums">{(node.cpuFreqMHz / 1000).toFixed(2)} GHz</div>
-              )}
-              {(node.cpuTemp || 0) > 0 && (
-                <div className={`text-xs mt-1 font-semibold tabular-nums ${node.cpuTemp > 80 ? 'text-red-400' : node.cpuTemp > 60 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                  {Math.round(node.cpuTemp)}°C
+
+            {/* Левая колонка: всё о процессоре */}
+            <div className="flex-shrink-0 flex flex-col gap-2 bg-slate-900/60 rounded-2xl border border-slate-700/30 px-4 py-4 min-w-[150px]">
+              {/* Большой % */}
+              <div className="text-center">
+                <div className={`text-5xl font-black tabular-nums leading-none ${colorByPct(node.cpu)}`}>
+                  {Math.round(node.cpu || 0)}%
                 </div>
-              )}
+                <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">Загрузка CPU</div>
+              </div>
+
+              <div className="border-t border-slate-700/40 pt-2 space-y-1.5">
+                {/* Модель */}
+                {node.cpuModel && (
+                  <div title={node.cpuModel} className="text-[11px] text-slate-400 leading-tight line-clamp-2 text-center">
+                    {node.cpuModel}
+                  </div>
+                )}
+
+                {/* Частота + ядра */}
+                <div className="flex items-center justify-between text-xs">
+                  {node.cpuFreqMHz > 0 && (
+                    <span className="text-slate-400 tabular-nums">{(node.cpuFreqMHz / 1000).toFixed(2)} <span className="text-slate-600">GHz</span></span>
+                  )}
+                  {cpuCores.length > 0 && (
+                    <span className="text-slate-500">{cpuCores.length} <span className="text-slate-600">ядер</span></span>
+                  )}
+                </div>
+
+                {/* Температура */}
+                {(node.cpuTemp || 0) > 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600">Температура</span>
+                    <span className={`font-semibold tabular-nums ${node.cpuTemp > 80 ? 'text-red-400' : node.cpuTemp > 60 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {Math.round(node.cpuTemp)}°C
+                    </span>
+                  </div>
+                )}
+
+                {/* I/O Wait + Steal */}
+                {(node.cpuIowait || 0) > 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600">I/O Wait</span>
+                    <span className="text-amber-400 tabular-nums font-medium">{(node.cpuIowait).toFixed(1)}%</span>
+                  </div>
+                )}
+                {(node.cpuSteal || 0) > 0 && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-slate-600">Steal</span>
+                    <span className="text-red-400 tabular-nums font-medium">{(node.cpuSteal).toFixed(1)}%</span>
+                  </div>
+                )}
+
+                {/* Load Average (Linux) */}
+                {!isWindows && (node.loadAvg1 || 0) > 0 && (
+                  <div className="pt-1 border-t border-slate-700/30">
+                    <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-1">Load Avg</div>
+                    <div className="flex gap-2 text-xs tabular-nums">
+                      <div className="flex-1 text-center">
+                        <div className={`font-bold ${node.loadAvg1 > cpuCores.length ? 'text-red-400' : node.loadAvg1 > cpuCores.length * 0.7 ? 'text-amber-400' : 'text-slate-300'}`}>
+                          {(node.loadAvg1 || 0).toFixed(2)}
+                        </div>
+                        <div className="text-slate-600 text-[10px]">1м</div>
+                      </div>
+                      <div className="flex-1 text-center">
+                        <div className={`font-bold ${node.loadAvg5 > cpuCores.length ? 'text-red-400' : node.loadAvg5 > cpuCores.length * 0.7 ? 'text-amber-400' : 'text-slate-300'}`}>
+                          {(node.loadAvg5 || 0).toFixed(2)}
+                        </div>
+                        <div className="text-slate-600 text-[10px]">5м</div>
+                      </div>
+                      <div className="flex-1 text-center">
+                        <div className={`font-bold ${node.loadAvg15 > cpuCores.length ? 'text-red-400' : node.loadAvg15 > cpuCores.length * 0.7 ? 'text-amber-400' : 'text-slate-300'}`}>
+                          {(node.loadAvg15 || 0).toFixed(2)}
+                        </div>
+                        <div className="text-slate-600 text-[10px]">15м</div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
-            {/* Правая часть: метрики-чипы сверху + график снизу */}
-            <div className="flex-1 min-w-0 flex flex-col gap-3">
-              {/* Чипы — только нестандартные метрики */}
-              {((node.cpuIowait || 0) > 0 || (node.cpuSteal || 0) > 0 || (!isWindows && node.loadAvg1 > 0)) && (
-                <div className="flex gap-2 flex-wrap">
-                  {(node.cpuIowait || 0) > 0 && (
-                    <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">I/O Wait</div>
-                      <div className="text-sm font-bold text-amber-400 tabular-nums">{(node.cpuIowait || 0).toFixed(1)}%</div>
-                    </div>
-                  )}
-                  {(node.cpuSteal || 0) > 0 && (
-                    <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Steal</div>
-                      <div className="text-sm font-bold text-red-400 tabular-nums">{(node.cpuSteal || 0).toFixed(1)}%</div>
-                    </div>
-                  )}
-                  {!isWindows && node.loadAvg1 > 0 && (
-                    <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Load avg</div>
-                      <div className="text-sm font-bold text-slate-200 tabular-nums">{(node.loadAvg1 || 0).toFixed(2)}</div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Живые точки 10с — всегда актуальные данные */}
-              <div className="flex-1 min-h-[120px]">
-                <CpuHistory data={liveBuffer} />
-              </div>
+            {/* Правая часть: только график */}
+            <div className="flex-1 min-w-0 min-h-[160px]">
+              <CpuHistory data={liveBuffer} />
             </div>
           </div>
 
