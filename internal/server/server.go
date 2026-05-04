@@ -120,6 +120,7 @@ func Run() {
 	http.HandleFunc("/api/auth/register", handleAuthRegister)
 	http.HandleFunc("/api/auth/login", handleAuthLogin)
 	http.HandleFunc("/api/auth/logout", handleAuthLogout)
+	http.HandleFunc("/api/auth/users", requireAuth(handleCreateUser))
 
 	port := ":8080"
 	log.Printf("🚀 Мастер-сервер запущен на порту %s", port)
@@ -274,4 +275,29 @@ func handleAuthLogout(w http.ResponseWriter, r *http.Request) {
 	token := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 	DeleteSession(dbConn, token)
 	w.WriteHeader(http.StatusOK)
+}
+
+// handleCreateUser — POST /api/auth/users (требует авторизации)
+// Позволяет создать нового пользователя системы
+func handleCreateUser(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Login    string `json:"login"`
+		Password string `json:"password"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Login == "" || body.Password == "" {
+		http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
+		return
+	}
+	if _, err := RegisterUser(dbConn, body.Login, body.Password); err != nil {
+		log.Printf("❌ Ошибка создания пользователя: %v", err)
+		http.Error(w, `{"error":"user already exists or db error"}`, http.StatusConflict)
+		return
+	}
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{"status": "created"})
 }

@@ -83,6 +83,18 @@ export async function deleteNode(name) {
   if (!res.ok) throw new Error('Ошибка удаления узла');
 }
 
+export async function createUser(login, password) {
+  const res = await fetch(`${API_BASE}/auth/users`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ login, password }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Ошибка создания пользователя');
+  }
+}
+
 export async function logout() {
   await fetch(`${API_BASE}/auth/logout`, {
     method: 'POST',
