@@ -618,7 +618,7 @@ export default function NodeDetail() {
           <div className="flex gap-4 mb-4">
 
             {/* Левая колонка: всё о процессоре */}
-            <div className="flex-shrink-0 flex flex-col gap-2 bg-slate-900/60 rounded-2xl border border-slate-700/30 px-4 py-4 min-w-[150px]">
+            <div className="flex-shrink-0 flex flex-col gap-2 justify-center bg-slate-900/60 rounded-2xl border border-slate-700/30 px-4 py-4 min-w-[150px]">
               {/* Большой % */}
               <div className="text-center">
                 <div className={`text-5xl font-black tabular-nums leading-none ${colorByPct(node.cpu)}`}>
