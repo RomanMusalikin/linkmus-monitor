@@ -511,7 +511,7 @@ export default function NodeDetail() {
         const rangeLabel = { '24h': '24 часа', '7d': '7 дней', '14d': '14 дней', '30d': '30 дней' }[historyRange] || '';
         const pointLabel = src24 ? '10-мин. бакеты' : 'часовые агрегаты';
         const ramLabel = src24 ? 'RAM %' : 'RAM GB';
-        const ramFmt = src24 ? v => [`${v.toFixed(1)}%`, 'RAM'] : v => [`${v.toFixed(2)} GB`, 'RAM'];
+        const ramFmt = src24 ? v => [v != null ? `${v.toFixed(1)}%` : '—', 'RAM'] : v => [v != null ? `${v.toFixed(2)} GB` : '—', 'RAM'];
 
         if (histData.length === 0) return (
           <div className="mb-6 bg-slate-800/40 rounded-2xl border border-slate-700/30 p-5 text-center text-slate-500 text-sm">
@@ -539,8 +539,8 @@ export default function NodeDetail() {
                     <XAxis dataKey="time" hide />
                     <YAxis domain={[0, 100]} hide />
                     <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                      formatter={v => [`${v.toFixed(1)}%`, 'CPU']} labelStyle={{ color: '#64748b' }} />
-                    <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhCpu)" dot={false} isAnimationActive={false} />
+                      formatter={v => [v != null ? `${v.toFixed(1)}%` : '—', 'CPU']} labelStyle={{ color: '#64748b' }} />
+                    <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhCpu)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -558,7 +558,7 @@ export default function NodeDetail() {
                     <YAxis hide />
                     <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
                       formatter={ramFmt} labelStyle={{ color: '#64748b' }} />
-                    <Area type="monotone" dataKey="ram" stroke="#8b5cf6" strokeWidth={1.5} fill="url(#lhRam)" dot={false} isAnimationActive={false} />
+                    <Area type="monotone" dataKey="ram" stroke="#8b5cf6" strokeWidth={1.5} fill="url(#lhRam)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -575,8 +575,8 @@ export default function NodeDetail() {
                     <XAxis dataKey="time" hide />
                     <YAxis domain={[0, 100]} hide />
                     <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                      formatter={v => [`${v.toFixed(1)}%`, 'Диск']} labelStyle={{ color: '#64748b' }} />
-                    <Area type="monotone" dataKey="disk" stroke="#f59e0b" strokeWidth={1.5} fill="url(#lhDisk)" dot={false} isAnimationActive={false} />
+                      formatter={v => [v != null ? `${v.toFixed(1)}%` : '—', 'Диск']} labelStyle={{ color: '#64748b' }} />
+                    <Area type="monotone" dataKey="disk" stroke="#f59e0b" strokeWidth={1.5} fill="url(#lhDisk)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -598,9 +598,9 @@ export default function NodeDetail() {
                       <XAxis dataKey="time" hide />
                       <YAxis hide />
                       <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                        formatter={(v, name) => [fmtBytes(v), name === 'netRecv' ? '↓' : '↑']} labelStyle={{ color: '#64748b' }} />
-                      <Area type="monotone" dataKey="netRecv" stroke="#06b6d4" strokeWidth={1.5} fill="url(#lhRecv)" dot={false} isAnimationActive={false} />
-                      <Area type="monotone" dataKey="netSent" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhSent)" dot={false} isAnimationActive={false} />
+                        formatter={(v, name) => [v != null ? fmtBytes(v) : '—', name === 'netRecv' ? '↓' : '↑']} labelStyle={{ color: '#64748b' }} />
+                      <Area type="monotone" dataKey="netRecv" stroke="#06b6d4" strokeWidth={1.5} fill="url(#lhRecv)" dot={false} isAnimationActive={false} connectNulls={false} />
+                      <Area type="monotone" dataKey="netSent" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhSent)" dot={false} isAnimationActive={false} connectNulls={false} />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
