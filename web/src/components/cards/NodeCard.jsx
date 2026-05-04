@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Monitor, Terminal, Trash2, Wifi, GripVertical, Pencil, Check, X } from 'lucide-react';
 import Sparkline from '../charts/Sparkline';
 import { deleteNode, renameNode } from '../../lib/api';
+import { dragState } from '../../lib/dragState';
 
 function getOSLabel(os) {
   if (!os) return 'Unknown OS';
@@ -79,7 +80,7 @@ function AgentVersionBadge({ version, serverVersion }) {
   );
 }
 
-export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging, anyDragging, serverVersion }) {
+export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging, serverVersion }) {
   const isWindows = node.os?.toLowerCase().includes('windows');
   const ramPct = node.ramTotal > 0 ? (node.ramUsed / node.ramTotal) * 100 : 0;
   const [confirming, setConfirming] = useState(false);
@@ -87,15 +88,6 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
   const renameInputRef = useRef(null);
-  const wasDraggingRef = useRef(false);
-
-  useEffect(() => {
-    if (isDragging) wasDraggingRef.current = true;
-  }, [isDragging]);
-
-  useEffect(() => {
-    if (anyDragging) wasDraggingRef.current = true;
-  }, [anyDragging]);
 
   async function handleDelete(e) {
     e.preventDefault();
@@ -147,10 +139,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
     <Link
       to={`/node/${node.name}`}
       onClick={e => {
-        if (wasDraggingRef.current) {
-          wasDraggingRef.current = false;
-          e.preventDefault();
-        }
+        if (dragState.happened) { e.preventDefault(); }
       }}
       className={`group backdrop-blur-sm rounded-2xl border transition-all duration-200 block relative overflow-hidden
         ${node.online

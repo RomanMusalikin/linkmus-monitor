@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft, Cpu, Database, HardDrive, Globe,
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
@@ -230,6 +230,14 @@ export default function NodeDetail() {
   const [loadingLong, setLoadingLong] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const exportCloseTimer = useRef(null);
+
+  // Авто-загрузка 24ч при открытии страницы
+  useEffect(() => {
+    if (nodeId && !fullHistory) {
+      selectHistoryRange('24h');
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nodeId]);
 
   async function selectHistoryRange(range) {
     setHistoryRange(range);
@@ -596,84 +604,72 @@ export default function NodeDetail() {
 
         {/* ── CPU — широкий блок ── */}
         <Card title="Процессор (CPU)" icon={Cpu} iconColor="text-blue-400" className="xl:col-span-2">
-          {/* Верхняя строка: гейдж + метрики-чипы */}
-          <div className="flex gap-5 mb-4">
-            <div className="flex-shrink-0">
-              <CpuGauge value={node.cpu} />
-            </div>
-            <div className="flex-1 grid grid-cols-2 sm:grid-cols-3 gap-2 content-start">
-              <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">User</div>
-                <div className="text-sm font-bold text-blue-400 tabular-nums">{(node.cpuUser || 0).toFixed(1)}%</div>
+          {/* Верхняя строка: большой % слева + метрики справа + график */}
+          <div className="flex gap-4 mb-4">
+            {/* Левая колонка: текущая нагрузка крупно */}
+            <div className="flex-shrink-0 flex flex-col items-center justify-center bg-slate-900/60 rounded-2xl border border-slate-700/30 px-5 py-4 min-w-[100px]">
+              <div className={`text-4xl font-black tabular-nums leading-none ${colorByPct(node.cpu)}`}>
+                {Math.round(node.cpu || 0)}%
               </div>
-              <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">System</div>
-                <div className="text-sm font-bold text-violet-400 tabular-nums">{(node.cpuSystem || 0).toFixed(1)}%</div>
-              </div>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">CPU</div>
               {node.cpuFreqMHz > 0 && (
-                <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Частота</div>
-                  <div className="text-sm font-bold text-slate-200 tabular-nums">{(node.cpuFreqMHz / 1000).toFixed(2)} GHz</div>
-                </div>
+                <div className="text-xs text-slate-400 mt-2 tabular-nums">{(node.cpuFreqMHz / 1000).toFixed(2)} GHz</div>
               )}
               {(node.cpuTemp || 0) > 0 && (
+                <div className={`text-xs mt-1 font-semibold tabular-nums ${node.cpuTemp > 80 ? 'text-red-400' : node.cpuTemp > 60 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                  {Math.round(node.cpuTemp)}°C
+                </div>
+              )}
+            </div>
+
+            {/* Правая часть: метрики-чипы сверху + график снизу */}
+            <div className="flex-1 min-w-0 flex flex-col gap-3">
+              {/* Чипы */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Темп.</div>
-                  <div className={`text-sm font-bold tabular-nums ${node.cpuTemp > 80 ? 'text-red-400' : node.cpuTemp > 60 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                    {Math.round(node.cpuTemp)}°C
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">User</div>
+                  <div className="text-sm font-bold text-blue-400 tabular-nums">{(node.cpuUser || 0).toFixed(1)}%</div>
+                </div>
+                <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">System</div>
+                  <div className="text-sm font-bold text-violet-400 tabular-nums">{(node.cpuSystem || 0).toFixed(1)}%</div>
+                </div>
+                {(node.cpuIowait || 0) > 0 ? (
+                  <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">I/O Wait</div>
+                    <div className="text-sm font-bold text-amber-400 tabular-nums">{(node.cpuIowait || 0).toFixed(1)}%</div>
                   </div>
-                </div>
-              )}
-              {(node.cpuIowait || 0) > 0 && (
-                <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">I/O Wait</div>
-                  <div className="text-sm font-bold text-amber-400 tabular-nums">{(node.cpuIowait || 0).toFixed(1)}%</div>
-                </div>
-              )}
-              {(node.cpuSteal || 0) > 0 && (
-                <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Steal</div>
-                  <div className="text-sm font-bold text-red-400 tabular-nums">{(node.cpuSteal || 0).toFixed(1)}%</div>
-                </div>
-              )}
-              {!isWindows && node.loadAvg1 > 0 && (
-                <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30 col-span-1">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Load avg</div>
-                  <div className="text-sm font-bold text-slate-200 tabular-nums">
-                    {(node.loadAvg1 || 0).toFixed(2)}
-                    <span className="text-slate-500 text-[10px] font-normal ml-1">/ {(node.loadAvg5 || 0).toFixed(2)} / {(node.loadAvg15 || 0).toFixed(2)}</span>
+                ) : (node.cpuSteal || 0) > 0 ? (
+                  <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Steal</div>
+                    <div className="text-sm font-bold text-red-400 tabular-nums">{(node.cpuSteal || 0).toFixed(1)}%</div>
                   </div>
-                </div>
-              )}
+                ) : null}
+                {!isWindows && node.loadAvg1 > 0 && (
+                  <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
+                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Load avg</div>
+                    <div className="text-sm font-bold text-slate-200 tabular-nums">{(node.loadAvg1 || 0).toFixed(2)}</div>
+                  </div>
+                )}
+              </div>
+
+              {/* График из fullHistory */}
+              <div className="flex-1 min-h-[120px]">
+                <CpuHistory data={(fullHistory?.cpuHistory) || []} />
+              </div>
             </div>
           </div>
 
-          {/* История — полная ширина (только в режиме Сейчас) */}
-          {historyRange === 'live' && <CpuHistory data={node.cpuHistory || []} />}
-
           {/* Нижняя строка: breakdown + ядра */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
-            {/* CPU breakdown stacked bar */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-3 border-t border-slate-700/30">
             {(node.cpuUser > 0 || node.cpuSystem > 0) && (
               <div>
                 <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Разбивка нагрузки</div>
                 <div className="w-full h-3 rounded-full overflow-hidden flex">
-                  {node.cpuUser > 0 && (
-                    <div className="h-full bg-blue-500 transition-all" style={{ width: `${node.cpuUser}%` }}
-                      title={`User: ${node.cpuUser.toFixed(1)}%`} />
-                  )}
-                  {node.cpuSystem > 0 && (
-                    <div className="h-full bg-violet-500 transition-all" style={{ width: `${node.cpuSystem}%` }}
-                      title={`System: ${node.cpuSystem.toFixed(1)}%`} />
-                  )}
-                  {(node.cpuIowait || 0) > 0 && (
-                    <div className="h-full bg-amber-500 transition-all" style={{ width: `${node.cpuIowait}%` }}
-                      title={`I/O Wait: ${node.cpuIowait.toFixed(1)}%`} />
-                  )}
-                  {(node.cpuSteal || 0) > 0 && (
-                    <div className="h-full bg-red-500 transition-all" style={{ width: `${node.cpuSteal}%` }}
-                      title={`Steal: ${node.cpuSteal.toFixed(1)}%`} />
-                  )}
+                  {node.cpuUser > 0 && <div className="h-full bg-blue-500 transition-all" style={{ width: `${node.cpuUser}%` }} title={`User: ${node.cpuUser.toFixed(1)}%`} />}
+                  {node.cpuSystem > 0 && <div className="h-full bg-violet-500 transition-all" style={{ width: `${node.cpuSystem}%` }} title={`System: ${node.cpuSystem.toFixed(1)}%`} />}
+                  {(node.cpuIowait || 0) > 0 && <div className="h-full bg-amber-500 transition-all" style={{ width: `${node.cpuIowait}%` }} title={`I/O Wait: ${node.cpuIowait.toFixed(1)}%`} />}
+                  {(node.cpuSteal || 0) > 0 && <div className="h-full bg-red-500 transition-all" style={{ width: `${node.cpuSteal}%` }} title={`Steal: ${node.cpuSteal.toFixed(1)}%`} />}
                   <div className="h-full bg-slate-700/40 flex-1" />
                 </div>
                 <div className="flex gap-3 mt-1.5 flex-wrap">
@@ -692,7 +688,6 @@ export default function NodeDetail() {
               </div>
             )}
 
-            {/* CPU по ядрам */}
             {cpuCores.length > 0 && (
               <div>
                 <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">
@@ -880,39 +875,43 @@ export default function NodeDetail() {
         {/* ── Сеть ── */}
         <Card title={`Сеть${node.netInterface ? ` · ${node.netInterface}` : ''}`}
               icon={Globe} iconColor="text-cyan-400" className="xl:col-span-2">
-          <div className="flex gap-3 mb-4">
-            <div className="flex-1 bg-slate-900/60 rounded-xl p-3 text-center border border-slate-700/40">
-              <div className="text-cyan-400 font-bold text-lg tabular-nums">↓ {fmtBytes(node.netRecvSec)}</div>
-              <div className="text-xs text-slate-500 mt-0.5">Входящий трафик</div>
+          <div className="flex flex-col h-full gap-3">
+            <div className="flex gap-3">
+              <div className="flex-1 bg-slate-900/60 rounded-xl p-3 text-center border border-slate-700/40">
+                <div className="text-cyan-400 font-bold text-lg tabular-nums">↓ {fmtBytes(node.netRecvSec)}</div>
+                <div className="text-xs text-slate-500 mt-0.5">Входящий трафик</div>
+              </div>
+              <div className="flex-1 bg-slate-900/60 rounded-xl p-3 text-center border border-slate-700/40">
+                <div className="text-blue-400 font-bold text-lg tabular-nums">↑ {fmtBytes(node.netSentSec)}</div>
+                <div className="text-xs text-slate-500 mt-0.5">Исходящий трафик</div>
+              </div>
             </div>
-            <div className="flex-1 bg-slate-900/60 rounded-xl p-3 text-center border border-slate-700/40">
-              <div className="text-blue-400 font-bold text-lg tabular-nums">↑ {fmtBytes(node.netSentSec)}</div>
-              <div className="text-xs text-slate-500 mt-0.5">Исходящий трафик</div>
+
+            {/* Все интерфейсы */}
+            {node.allIfaces && node.allIfaces.length > 1 && (
+              <div className="pt-2 border-t border-slate-700/40">
+                <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">Все интерфейсы</div>
+                <div className="space-y-2">
+                  {node.allIfaces.map(iface => (
+                    <div key={iface.name}
+                      className="flex items-center justify-between text-xs py-1.5 border-b border-slate-700/20 last:border-0">
+                      <span className="text-slate-400 font-medium flex items-center gap-1.5">
+                        <Wifi className="w-3 h-3 text-slate-500" />{iface.name}
+                      </span>
+                      <span className="text-slate-500 tabular-nums">
+                        ↓{fmtBytes(iface.bytesRecvSec)} · ↑{fmtBytes(iface.bytesSentSec)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* График прижат к низу */}
+            <div className="mt-auto">
+              <NetworkLines data={node.netHistory || []} />
             </div>
           </div>
-          <NetworkLines data={node.netHistory || []} />
-
-          {/* Все интерфейсы */}
-          {node.allIfaces && node.allIfaces.length > 1 && (
-            <div className="mt-4 pt-4 border-t border-slate-700/40">
-              <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">
-                Все интерфейсы
-              </div>
-              <div className="space-y-2">
-                {node.allIfaces.map(iface => (
-                  <div key={iface.name}
-                    className="flex items-center justify-between text-xs py-1.5 border-b border-slate-700/20 last:border-0">
-                    <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                      <Wifi className="w-3 h-3 text-slate-500" />{iface.name}
-                    </span>
-                    <span className="text-slate-500 tabular-nums">
-                      ↓{fmtBytes(iface.bytesRecvSec)} · ↑{fmtBytes(iface.bytesSentSec)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
         </Card>
 
         {/* ── Сервисы ── */}
