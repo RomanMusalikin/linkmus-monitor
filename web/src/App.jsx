@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
 import NodeDetail from './pages/NodeDetail';
 import LoginPage from './pages/LoginPage';
+import Settings from './pages/Settings';
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import { useNodes } from './hooks/useNodes';
@@ -30,6 +31,7 @@ function AppShell({ onLogout }) {
           <Routes>
             <Route path="/" element={<Dashboard />} />
             <Route path="/node/:nodeId" element={<NodeDetail />} />
+            <Route path="/settings" element={<Settings />} />
           </Routes>
         </main>
       </div>

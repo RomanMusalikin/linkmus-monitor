@@ -103,6 +103,7 @@ func Run() {
 	StartNodesCache(dbConn)
 	StartDataCleanup(dbConn)
 	StartHourlyAggregator(dbConn)
+	StartAlertChecker(dbConn)
 
 	// Агент — без авторизации
 	http.HandleFunc("/api/metrics", handleMetrics)
@@ -121,6 +122,9 @@ func Run() {
 	http.HandleFunc("/api/auth/login", handleAuthLogin)
 	http.HandleFunc("/api/auth/logout", handleAuthLogout)
 	http.HandleFunc("/api/auth/users", requireAuth(handleCreateUser))
+
+	// Настройки алертов
+	http.HandleFunc("/api/settings/alerts", requireAuth(handleAlertSettings))
 
 	port := ":8080"
 	log.Printf("🚀 Мастер-сервер запущен на порту %s", port)
@@ -205,13 +209,14 @@ func handleAuthRegister(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Login    string `json:"login"`
 		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Login == "" || body.Password == "" {
 		http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
 		return
 	}
 
-	userID, err := RegisterUser(dbConn, body.Login, body.Password)
+	userID, err := RegisterUser(dbConn, body.Login, body.Password, body.Email)
 	if err != nil {
 		log.Printf("❌ Ошибка регистрации: %v", err)
 		http.Error(w, `{"error":"registration failed"}`, http.StatusInternalServerError)
@@ -288,16 +293,50 @@ func handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Login    string `json:"login"`
 		Password string `json:"password"`
+		Email    string `json:"email"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Login == "" || body.Password == "" {
 		http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
 		return
 	}
-	if _, err := RegisterUser(dbConn, body.Login, body.Password); err != nil {
+	if _, err := RegisterUser(dbConn, body.Login, body.Password, body.Email); err != nil {
 		log.Printf("❌ Ошибка создания пользователя: %v", err)
 		http.Error(w, `{"error":"user already exists or db error"}`, http.StatusConflict)
 		return
 	}
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"status": "created"})
+}
+
+// handleAlertSettings — GET/PUT /api/settings/alerts
+func handleAlertSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	corsHeaders(w)
+	switch r.Method {
+	case http.MethodOptions:
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodGet:
+		json.NewEncoder(w).Encode(GetAlertSettings(dbConn))
+	case http.MethodPut:
+		var s AlertSettings
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
+			return
+		}
+		if err := SaveAlertSettings(dbConn, s); err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	case http.MethodPost:
+		// POST /api/settings/alerts/test
+		s := GetAlertSettings(dbConn)
+		if err := SendTestEmail(s); err != nil {
+			http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadGateway)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
 }

@@ -32,11 +32,11 @@ export async function checkNeedSetup() {
   return data.needSetup;
 }
 
-export async function register(login, password) {
+export async function register(login, password, email = '') {
   const res = await fetch(`${API_BASE}/auth/register`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ login, password }),
+    body: JSON.stringify({ login, password, email }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
@@ -101,4 +101,30 @@ export async function logout() {
     headers: authHeaders(),
   });
   localStorage.removeItem('mon_token');
+}
+
+export async function getAlertSettings() {
+  const res = await fetch(`${API_BASE}/settings/alerts`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Ошибка получения настроек');
+  return res.json();
+}
+
+export async function saveAlertSettings(settings) {
+  const res = await fetch(`${API_BASE}/settings/alerts`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error('Ошибка сохранения настроек');
+}
+
+export async function sendTestEmail() {
+  const res = await fetch(`${API_BASE}/settings/alerts`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Ошибка отправки');
+  }
 }

@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import { Activity, LogOut, UserPlus, X } from 'lucide-react';
+import { Activity, LogOut, UserPlus, X, Settings } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { logout, createUser } from '../../lib/api';
 
 function CreateUserModal({ onClose }) {
@@ -123,6 +124,13 @@ export default function Header({ onlineCount = 0, totalCount = 0, onLogout, vers
             <UserPlus className="w-4 h-4" />
             <span className="hidden sm:inline">Пользователи</span>
           </button>
+          <Link to="/settings"
+            title="Настройки"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-700/50 border border-transparent hover:border-slate-600/30 transition-all duration-200 text-sm"
+          >
+            <Settings className="w-4 h-4" />
+            <span className="hidden sm:inline">Настройки</span>
+          </Link>
           <button
             onClick={handleLogout}
             title="Выйти"

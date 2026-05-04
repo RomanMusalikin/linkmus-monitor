@@ -98,6 +98,7 @@ export default function LoginPage({ mode, onAuth }) {
   const [loginVal, setLoginVal] = useState('');
   const [password, setPassword] = useState('');
   const [password2, setPassword2] = useState('');
+  const [emailVal, setEmailVal] = useState('');
   const [error, setError]       = useState('');
   const [loading, setLoading]   = useState(false);
 
@@ -141,7 +142,7 @@ export default function LoginPage({ mode, onAuth }) {
     if (!loginVal.trim() || !password)     { setError('Заполните все поля');   return; }
     setLoading(true);
     try {
-      if (isSetup) await register(loginVal.trim(), password);
+      if (isSetup) await register(loginVal.trim(), password, emailVal.trim());
       else         await login(loginVal.trim(), password);
       onAuth();
     } catch (err) {
@@ -238,12 +239,20 @@ export default function LoginPage({ mode, onAuth }) {
           </div>
 
           {isSetup && (
-            <div style={{ marginBottom: 22 }}>
-              <label style={labelStyle}>ПОВТОРИТЕ ПАРОЛЬ</label>
-              <input type="password" value={password2} onChange={e => setPassword2(e.target.value)}
-                autoComplete="new-password" placeholder="••••••••"
-                style={fieldStyle('password2')} {...fp('password2')}/>
-            </div>
+            <>
+              <div style={{ marginBottom: 16 }}>
+                <label style={labelStyle}>ПОВТОРИТЕ ПАРОЛЬ</label>
+                <input type="password" value={password2} onChange={e => setPassword2(e.target.value)}
+                  autoComplete="new-password" placeholder="••••••••"
+                  style={fieldStyle('password2')} {...fp('password2')}/>
+              </div>
+              <div style={{ marginBottom: 22 }}>
+                <label style={labelStyle}>E-MAIL ДЛЯ УВЕДОМЛЕНИЙ <span style={{ color: '#475569', fontWeight: 400 }}>(необязательно)</span></label>
+                <input type="email" value={emailVal} onChange={e => setEmailVal(e.target.value)}
+                  autoComplete="email" placeholder="you@example.com"
+                  style={fieldStyle('email')} {...fp('email')}/>
+              </div>
+            </>
           )}
 
           {error && (

@@ -141,10 +141,27 @@ func MigrateDB(db *sql.DB) {
 		`ALTER TABLE metrics ADD COLUMN disk_queue      REAL    DEFAULT 0`,
 		`ALTER TABLE metrics ADD COLUMN fsrm_json       TEXT    DEFAULT '[]'`,
 		`ALTER TABLE metrics ADD COLUMN agent_version   TEXT    DEFAULT ''`,
+		`ALTER TABLE users   ADD COLUMN email          TEXT    DEFAULT ''`,
 	}
 	for _, stmt := range cols {
 		db.Exec(stmt)
 	}
+
+	// Таблица настроек алертов (singleton, id=1)
+	db.Exec(`
+	CREATE TABLE IF NOT EXISTS alert_settings (
+		id             INTEGER PRIMARY KEY DEFAULT 1,
+		smtp_host      TEXT    DEFAULT '',
+		smtp_port      INTEGER DEFAULT 587,
+		smtp_user      TEXT    DEFAULT '',
+		smtp_pass      TEXT    DEFAULT '',
+		from_email     TEXT    DEFAULT '',
+		to_email       TEXT    DEFAULT '',
+		cpu_threshold  INTEGER DEFAULT 0,
+		ram_threshold  INTEGER DEFAULT 0,
+		cooldown_min   INTEGER DEFAULT 30,
+		enabled        INTEGER DEFAULT 0
+	)`)
 
 	// Индексы: критически важны для производительности при большом числе узлов
 	indexes := []string{
