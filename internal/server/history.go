@@ -110,10 +110,10 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 	rangeParam := r.URL.Query().Get("range")
 	var since string
 	switch rangeParam {
+	case "14d":
+		since = "'-14 days'"
 	case "30d":
 		since = "'-30 days'"
-	case "90d":
-		since = "'-90 days'"
 	default: // 7d
 		since = "'-7 days'"
 	}

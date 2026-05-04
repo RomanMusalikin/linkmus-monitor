@@ -412,8 +412,8 @@ export default function NodeDetail() {
               { key: 'live', label: 'Сейчас' },
               { key: '24h',  label: '24ч' },
               { key: '7d',   label: '7д' },
+              { key: '14d',  label: '14д' },
               { key: '30d',  label: '30д' },
-              { key: '90d',  label: '90д' },
             ].map(({ key, label }) => (
               <button key={key}
                 onClick={() => key === 'live' ? (setHistoryRange('live'), setFullHistory(null), setLongHistory(null)) : selectHistoryRange(key)}
@@ -472,104 +472,124 @@ export default function NodeDetail() {
         }
       </div>
 
-      {/* ── Долгосрочная история (7д / 30д / 90д) ── */}
-      {longHistory && longHistory.length > 0 && (
-        <div className="mb-6 bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
-          <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-4">
-            История за {historyRange === '7d' ? '7 дней' : historyRange === '30d' ? '30 дней' : '90 дней'}
-            <span className="ml-2 text-slate-600 normal-case">· {longHistory.length} точек (по часам)</span>
-          </div>
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
-            {/* CPU */}
-            <div>
-              <div className="text-xs text-slate-500 mb-1">CPU %</div>
-              <ResponsiveContainer width="100%" height={80}>
-                <AreaChart data={longHistory} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="lhCpu" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" hide />
-                  <YAxis domain={[0, 100]} hide />
-                  <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                    formatter={v => [`${v.toFixed(1)}%`, 'CPU']} labelStyle={{ color: '#64748b' }} />
-                  <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhCpu)" dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            {/* RAM */}
-            <div>
-              <div className="text-xs text-slate-500 mb-1">RAM GB</div>
-              <ResponsiveContainer width="100%" height={80}>
-                <AreaChart data={longHistory} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="lhRam" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" hide />
-                  <YAxis hide />
-                  <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                    formatter={v => [`${v.toFixed(2)} GB`, 'RAM']} labelStyle={{ color: '#64748b' }} />
-                  <Area type="monotone" dataKey="ram" stroke="#8b5cf6" strokeWidth={1.5} fill="url(#lhRam)" dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            {/* Disk */}
-            <div>
-              <div className="text-xs text-slate-500 mb-1">Диск %</div>
-              <ResponsiveContainer width="100%" height={80}>
-                <AreaChart data={longHistory} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="lhDisk" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" hide />
-                  <YAxis domain={[0, 100]} hide />
-                  <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                    formatter={v => [`${v.toFixed(1)}%`, 'Диск']} labelStyle={{ color: '#64748b' }} />
-                  <Area type="monotone" dataKey="disk" stroke="#f59e0b" strokeWidth={1.5} fill="url(#lhDisk)" dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-            {/* Network */}
-            <div>
-              <div className="text-xs text-slate-500 mb-1">Сеть B/s</div>
-              <ResponsiveContainer width="100%" height={80}>
-                <AreaChart data={longHistory} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
-                  <defs>
-                    <linearGradient id="lhRecv" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
-                      <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                    </linearGradient>
-                    <linearGradient id="lhSent" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
-                      <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <XAxis dataKey="time" hide />
-                  <YAxis hide />
-                  <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                    formatter={(v, name) => [fmtBytes(v), name === 'netRecv' ? '↓' : '↑']} labelStyle={{ color: '#64748b' }} />
-                  <Area type="monotone" dataKey="netRecv" stroke="#06b6d4" strokeWidth={1.5} fill="url(#lhRecv)" dot={false} isAnimationActive={false} />
-                  <Area type="monotone" dataKey="netSent" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhSent)" dot={false} isAnimationActive={false} />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── История (24ч / 7д / 14д / 30д) ── */}
+      {(() => {
+        // Для 24ч строим unified-данные из 10-мин бакетов
+        const src24 = historyRange === '24h' && fullHistory;
+        const histData = src24
+          ? (fullHistory.cpuHistory || []).map((p, i) => ({
+              time: p.time,
+              cpu: p.value,
+              ram: fullHistory.ramHistory?.[i]?.value ?? null,
+              disk: fullHistory.diskHistory?.[i]?.value ?? null,
+              netRecv: null,
+              netSent: null,
+            }))
+          : longHistory;
 
-      {longHistory && longHistory.length === 0 && (
-        <div className="mb-6 bg-slate-800/40 rounded-2xl border border-slate-700/30 p-5 text-center text-slate-500 text-sm">
-          Нет данных за выбранный период. История накапливается — данные появятся после первого часа работы сервера.
-        </div>
-      )}
+        if (!histData) return null;
+
+        const rangeLabel = { '24h': '24 часа', '7d': '7 дней', '14d': '14 дней', '30d': '30 дней' }[historyRange] || '';
+        const pointLabel = src24 ? '10-мин. бакеты' : 'часовые агрегаты';
+        const ramLabel = src24 ? 'RAM %' : 'RAM GB';
+        const ramFmt = src24 ? v => [`${v.toFixed(1)}%`, 'RAM'] : v => [`${v.toFixed(2)} GB`, 'RAM'];
+
+        if (histData.length === 0) return (
+          <div className="mb-6 bg-slate-800/40 rounded-2xl border border-slate-700/30 p-5 text-center text-slate-500 text-sm">
+            Нет данных за выбранный период. История накапливается — данные появятся после первого часа работы сервера.
+          </div>
+        );
+
+        return (
+          <div className="mb-6 bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
+            <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-4">
+              История за {rangeLabel}
+              <span className="ml-2 text-slate-600 normal-case">· {histData.length} точек ({pointLabel})</span>
+            </div>
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
+              <div>
+                <div className="text-xs text-slate-500 mb-1">CPU %</div>
+                <ResponsiveContainer width="100%" height={80}>
+                  <AreaChart data={histData} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="lhCpu" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="time" hide />
+                    <YAxis domain={[0, 100]} hide />
+                    <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                      formatter={v => [`${v.toFixed(1)}%`, 'CPU']} labelStyle={{ color: '#64748b' }} />
+                    <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhCpu)" dot={false} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 mb-1">{ramLabel}</div>
+                <ResponsiveContainer width="100%" height={80}>
+                  <AreaChart data={histData} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="lhRam" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="time" hide />
+                    <YAxis hide />
+                    <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                      formatter={ramFmt} labelStyle={{ color: '#64748b' }} />
+                    <Area type="monotone" dataKey="ram" stroke="#8b5cf6" strokeWidth={1.5} fill="url(#lhRam)" dot={false} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 mb-1">Диск %</div>
+                <ResponsiveContainer width="100%" height={80}>
+                  <AreaChart data={histData} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                    <defs>
+                      <linearGradient id="lhDisk" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
+                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="time" hide />
+                    <YAxis domain={[0, 100]} hide />
+                    <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                      formatter={v => [`${v.toFixed(1)}%`, 'Диск']} labelStyle={{ color: '#64748b' }} />
+                    <Area type="monotone" dataKey="disk" stroke="#f59e0b" strokeWidth={1.5} fill="url(#lhDisk)" dot={false} isAnimationActive={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              {!src24 && (
+                <div>
+                  <div className="text-xs text-slate-500 mb-1">Сеть B/s</div>
+                  <ResponsiveContainer width="100%" height={80}>
+                    <AreaChart data={histData} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                      <defs>
+                        <linearGradient id="lhRecv" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="lhSent" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
+                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <XAxis dataKey="time" hide />
+                      <YAxis hide />
+                      <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
+                        formatter={(v, name) => [fmtBytes(v), name === 'netRecv' ? '↓' : '↑']} labelStyle={{ color: '#64748b' }} />
+                      <Area type="monotone" dataKey="netRecv" stroke="#06b6d4" strokeWidth={1.5} fill="url(#lhRecv)" dot={false} isAnimationActive={false} />
+                      <Area type="monotone" dataKey="netSent" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhSent)" dot={false} isAnimationActive={false} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ── Основная сетка ── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
@@ -628,8 +648,8 @@ export default function NodeDetail() {
             </div>
           </div>
 
-          {/* История — полная ширина */}
-          <CpuHistory data={node.cpuHistory || []} />
+          {/* История — полная ширина (только в режиме Сейчас) */}
+          {historyRange === 'live' && <CpuHistory data={node.cpuHistory || []} />}
 
           {/* Нижняя строка: breakdown + ядра */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
@@ -739,8 +759,8 @@ export default function NodeDetail() {
               </div>
             )}
 
-            {/* RAM history */}
-            {node.ramHistory && node.ramHistory.length > 1 && (
+            {/* RAM history — только в режиме Сейчас, иначе показывается в верхней панели */}
+            {historyRange === 'live' && node.ramHistory && node.ramHistory.length > 1 && (
               <div className="pt-2 border-t border-slate-700/40">
                 <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">История RAM</div>
                 <ResponsiveContainer width="100%" height={60}>
@@ -829,8 +849,8 @@ export default function NodeDetail() {
               </div>
             )}
 
-            {/* Disk history */}
-            {(node.diskHistory || []).length > 1 && (
+            {/* Disk history — только в режиме Сейчас */}
+            {historyRange === 'live' && (node.diskHistory || []).length > 1 && (
               <div className="pt-3 border-t border-slate-700/40">
                 <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Заполнение диска</div>
                 <ResponsiveContainer width="100%" height={60}>
