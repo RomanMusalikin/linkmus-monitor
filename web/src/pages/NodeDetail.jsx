@@ -480,10 +480,10 @@ export default function NodeDetail() {
         }
       </div>
 
-      {/* ── История (24ч / 7д / 14д / 30д) ── */}
+      {/* ── История (7д / 14д / 30д) — 24ч показывается внутри CPU-карточки ── */}
       {(() => {
-        // Для 24ч строим unified-данные из 10-мин бакетов
-        const src24 = historyRange === '24h' && fullHistory;
+        if (historyRange === '24h') return null;
+        const src24 = false;
         const histData = src24
           ? (fullHistory.cpuHistory || []).map((p, i) => ({
               time: p.time,
@@ -624,34 +624,29 @@ export default function NodeDetail() {
 
             {/* Правая часть: метрики-чипы сверху + график снизу */}
             <div className="flex-1 min-w-0 flex flex-col gap-3">
-              {/* Чипы */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">User</div>
-                  <div className="text-sm font-bold text-blue-400 tabular-nums">{(node.cpuUser || 0).toFixed(1)}%</div>
+              {/* Чипы — только нестандартные метрики */}
+              {((node.cpuIowait || 0) > 0 || (node.cpuSteal || 0) > 0 || (!isWindows && node.loadAvg1 > 0)) && (
+                <div className="flex gap-2 flex-wrap">
+                  {(node.cpuIowait || 0) > 0 && (
+                    <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">I/O Wait</div>
+                      <div className="text-sm font-bold text-amber-400 tabular-nums">{(node.cpuIowait || 0).toFixed(1)}%</div>
+                    </div>
+                  )}
+                  {(node.cpuSteal || 0) > 0 && (
+                    <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Steal</div>
+                      <div className="text-sm font-bold text-red-400 tabular-nums">{(node.cpuSteal || 0).toFixed(1)}%</div>
+                    </div>
+                  )}
+                  {!isWindows && node.loadAvg1 > 0 && (
+                    <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
+                      <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Load avg</div>
+                      <div className="text-sm font-bold text-slate-200 tabular-nums">{(node.loadAvg1 || 0).toFixed(2)}</div>
+                    </div>
+                  )}
                 </div>
-                <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">System</div>
-                  <div className="text-sm font-bold text-violet-400 tabular-nums">{(node.cpuSystem || 0).toFixed(1)}%</div>
-                </div>
-                {(node.cpuIowait || 0) > 0 ? (
-                  <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">I/O Wait</div>
-                    <div className="text-sm font-bold text-amber-400 tabular-nums">{(node.cpuIowait || 0).toFixed(1)}%</div>
-                  </div>
-                ) : (node.cpuSteal || 0) > 0 ? (
-                  <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Steal</div>
-                    <div className="text-sm font-bold text-red-400 tabular-nums">{(node.cpuSteal || 0).toFixed(1)}%</div>
-                  </div>
-                ) : null}
-                {!isWindows && node.loadAvg1 > 0 && (
-                  <div className="bg-slate-900/60 rounded-xl p-2.5 border border-slate-700/30">
-                    <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Load avg</div>
-                    <div className="text-sm font-bold text-slate-200 tabular-nums">{(node.loadAvg1 || 0).toFixed(2)}</div>
-                  </div>
-                )}
-              </div>
+              )}
 
               {/* График из fullHistory */}
               <div className="flex-1 min-h-[120px]">
