@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { Activity, Server, AlertTriangle, Cpu, MemoryStick, HardDrive } from 'lucide-react';
 import NodeCard from '../components/cards/NodeCard';
 import { useNodesContext } from '../context/NodesContext';
@@ -25,7 +26,7 @@ function StatCard({ icon: Icon, label, value, sub, color = 'text-blue-400', bg =
   );
 }
 
-function SortableCard({ node, onDeleted, serverVersion }) {
+function SortableCard({ node, onDeleted, serverVersion, anyDragging }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: node.name });
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -35,7 +36,7 @@ function SortableCard({ node, onDeleted, serverVersion }) {
   };
   return (
     <div ref={setNodeRef} style={style}>
-      <NodeCard node={node} onDeleted={onDeleted} isDragging={isDragging} dragHandleProps={{ ...attributes, ...listeners }} serverVersion={serverVersion} />
+      <NodeCard node={node} onDeleted={onDeleted} isDragging={isDragging} anyDragging={anyDragging} dragHandleProps={{ ...attributes, ...listeners }} serverVersion={serverVersion} />
     </div>
   );
 }
@@ -44,6 +45,7 @@ export default function Dashboard() {
   const { data: nodes, loading, error, refresh, serverVersion } = useNodesContext();
   const { sorted, handleDragEnd } = useNodeOrder(nodes);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  const [anyDragging, setAnyDragging] = useState(false);
 
   if (loading && !nodes) {
     return (
@@ -114,11 +116,14 @@ export default function Dashboard() {
           <p className="text-xs mt-1 text-slate-600">Запустите агент на мониторируемых узлах</p>
         </div>
       ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <DndContext sensors={sensors} collisionDetection={closestCenter}
+          onDragStart={() => setAnyDragging(true)}
+          onDragEnd={e => { setAnyDragging(false); handleDragEnd(e); }}
+          onDragCancel={() => setAnyDragging(false)}>
           <SortableContext items={sorted.map(n => n.name)} strategy={rectSortingStrategy}>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-5">
               {sorted.map(node => (
-                <SortableCard key={node.name} node={node} onDeleted={refresh} serverVersion={serverVersion} />
+                <SortableCard key={node.name} node={node} onDeleted={refresh} serverVersion={serverVersion} anyDragging={anyDragging} />
               ))}
             </div>
           </SortableContext>

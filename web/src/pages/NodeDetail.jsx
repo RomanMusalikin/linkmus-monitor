@@ -1,5 +1,5 @@
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import {
   ArrowLeft, Cpu, Database, HardDrive, Globe,
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
@@ -228,6 +228,8 @@ export default function NodeDetail() {
   const [historyRange, setHistoryRange] = useState('24h');
   const [longHistory, setLongHistory] = useState(null);
   const [loadingLong, setLoadingLong] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
+  const exportCloseTimer = useRef(null);
 
   async function selectHistoryRange(range) {
     setHistoryRange(range);
@@ -387,19 +389,23 @@ export default function NodeDetail() {
 
         {/* Кнопки в правой части заголовка */}
         <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-          <div className="relative group/export">
+          <div className="relative"
+            onMouseEnter={() => { clearTimeout(exportCloseTimer.current); setExportOpen(true); }}
+            onMouseLeave={() => { exportCloseTimer.current = setTimeout(() => setExportOpen(false), 200); }}>
             <button className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
               bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600">
               <Download className="w-4 h-4" />
               Экспорт
             </button>
-            <div className="absolute right-0 top-full mt-1 hidden group-hover/export:flex flex-col z-10
-              bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden min-w-[120px]">
-              <button onClick={() => handleExport('csv')}
-                className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">CSV</button>
-              <button onClick={() => handleExport('json')}
-                className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">JSON</button>
-            </div>
+            {exportOpen && (
+              <div className="absolute right-0 top-full mt-1 flex flex-col z-10
+                bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden min-w-[120px]">
+                <button onClick={() => { handleExport('csv'); setExportOpen(false); }}
+                  className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">CSV</button>
+                <button onClick={() => { handleExport('json'); setExportOpen(false); }}
+                  className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">JSON</button>
+              </div>
+            )}
           </div>
           <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden text-sm">
             {[

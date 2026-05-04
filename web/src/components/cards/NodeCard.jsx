@@ -79,7 +79,7 @@ function AgentVersionBadge({ version, serverVersion }) {
   );
 }
 
-export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging, serverVersion }) {
+export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging, anyDragging, serverVersion }) {
   const isWindows = node.os?.toLowerCase().includes('windows');
   const ramPct = node.ramTotal > 0 ? (node.ramUsed / node.ramTotal) * 100 : 0;
   const [confirming, setConfirming] = useState(false);
@@ -92,6 +92,10 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
   useEffect(() => {
     if (isDragging) wasDraggingRef.current = true;
   }, [isDragging]);
+
+  useEffect(() => {
+    if (anyDragging) wasDraggingRef.current = true;
+  }, [anyDragging]);
 
   async function handleDelete(e) {
     e.preventDefault();
