@@ -230,6 +230,7 @@ export default function NodeDetail() {
   const [loadingLong, setLoadingLong] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const exportCloseTimer = useRef(null);
+  const [liveBuffer, setLiveBuffer] = useState([]);
 
   // Авто-загрузка 24ч при открытии страницы
   useEffect(() => {
@@ -238,6 +239,16 @@ export default function NodeDetail() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId]);
+
+  // Накапливаем живые точки с каждым polling-обновлением (каждые 10с)
+  const currentCpu = nodes?.find(n => n.name === nodeId)?.cpu;
+  const currentTs  = nodes?.find(n => n.name === nodeId)?.timestamp;
+  useEffect(() => {
+    if (currentCpu == null) return;
+    const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    setLiveBuffer(prev => [...prev.slice(-59), { value: currentCpu, time }]);
+  }, [currentCpu, currentTs]);
+
 
   async function selectHistoryRange(range) {
     setHistoryRange(range);
@@ -648,9 +659,9 @@ export default function NodeDetail() {
                 </div>
               )}
 
-              {/* График из fullHistory */}
+              {/* В режиме Сейчас — живые точки 10с; иначе — 24ч история */}
               <div className="flex-1 min-h-[120px]">
-                <CpuHistory data={(fullHistory?.cpuHistory) || []} />
+                <CpuHistory data={historyRange === 'live' ? liveBuffer : (fullHistory?.cpuHistory || [])} />
               </div>
             </div>
           </div>
@@ -1015,59 +1026,6 @@ export default function NodeDetail() {
 
       </div>
 
-      {/* ── Полная история наблюдений ── */}
-      {fullHistory && (
-        <div className="mt-6 space-y-5">
-          <div className="flex items-center gap-3">
-            <TrendingUp className="w-4 h-4 text-violet-400" />
-            <span className="text-sm font-semibold text-slate-300">История за последние 24 часа</span>
-            <span className="text-xs text-slate-500">({fullHistory.cpuHistory?.length || 0} точек · интервал 10 мин.)</span>
-          </div>
-
-          <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-5">
-            <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">CPU %</div>
-            <CpuHistory data={fullHistory.cpuHistory || []} />
-          </div>
-
-          <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-5">
-            <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">Сетевой трафик</div>
-            <NetworkLines data={fullHistory.netHistory || []} />
-          </div>
-
-          {fullHistory.ramHistory && fullHistory.ramHistory.length > 1 && (() => {
-            const d = fullHistory.ramHistory;
-            const ti = Math.max(0, Math.floor(d.length / 10) - 1);
-            const f = d.length > 36 ? (t) => t.slice(0, 5) : undefined;
-            return (
-              <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-5">
-                <div className="text-xs text-slate-500 font-semibold uppercase tracking-wider mb-3">RAM %</div>
-                <ResponsiveContainer width="100%" height={160}>
-                  <AreaChart data={d} margin={{ top: 5, right: 8, left: -20, bottom: 28 }}>
-                    <defs>
-                      <linearGradient id="ramGradFull" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.4} />
-                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
-                    <XAxis dataKey="time" stroke="#475569" fontSize={10} tickLine={false} axisLine={false}
-                      interval={ti} tickFormatter={f} angle={-35} textAnchor="end" dy={4} />
-                    <YAxis stroke="#475569" fontSize={11} tickLine={false} axisLine={false}
-                      domain={[0, 100]} tickFormatter={v => `${v}%`} />
-                    <Tooltip
-                      contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 }}
-                      formatter={v => [`${v}%`, 'RAM']}
-                      labelStyle={{ color: '#64748b' }}
-                    />
-                    <Area type="monotone" dataKey="value" stroke="#8b5cf6" strokeWidth={2}
-                      fill="url(#ramGradFull)" dot={false} isAnimationActive={false} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            );
-          })()}
-        </div>
-      )}
 
     </div>
   );
