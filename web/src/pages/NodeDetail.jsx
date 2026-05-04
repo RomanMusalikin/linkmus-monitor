@@ -424,7 +424,7 @@ export default function NodeDetail() {
               { key: '30d',  label: '30д' },
             ].map(({ key, label }) => (
               <button key={key}
-                onClick={() => key === 'live' ? (setHistoryRange('live'), setFullHistory(null), setLongHistory(null)) : selectHistoryRange(key)}
+                onClick={() => key === 'live' ? (setHistoryRange('live'), setLongHistory(null)) : selectHistoryRange(key)}
                 disabled={loadingFull || loadingLong}
                 className={`px-3 py-1.5 font-medium transition-all
                   ${historyRange === key
