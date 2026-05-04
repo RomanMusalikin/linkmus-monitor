@@ -491,10 +491,10 @@ export default function NodeDetail() {
         }
       </div>
 
-      {/* ── История (7д / 14д / 30д) — 24ч показывается внутри CPU-карточки ── */}
+      {/* ── История (24ч / 7д / 14д / 30д) ── */}
       {(() => {
-        if (historyRange === '24h') return null;
-        const src24 = false;
+        if (historyRange === 'live') return null;
+        const src24 = historyRange === '24h' && fullHistory;
         const histData = src24
           ? (fullHistory.cpuHistory || []).map((p, i) => ({
               time: p.time,
@@ -659,9 +659,9 @@ export default function NodeDetail() {
                 </div>
               )}
 
-              {/* В режиме Сейчас — живые точки 10с; иначе — 24ч история */}
+              {/* Живые точки 10с — всегда актуальные данные */}
               <div className="flex-1 min-h-[120px]">
-                <CpuHistory data={historyRange === 'live' ? liveBuffer : (fullHistory?.cpuHistory || [])} />
+                <CpuHistory data={liveBuffer} />
               </div>
             </div>
           </div>
