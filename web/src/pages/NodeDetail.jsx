@@ -670,7 +670,7 @@ export default function NodeDetail() {
       })()}
 
       {/* ── Основная сетка ── */}
-      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5">
+      <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
 
         {/* ── CPU — широкий блок ── */}
         <Card title="Процессор (CPU)" icon={Cpu} iconColor="text-blue-400" className="xl:col-span-2">
