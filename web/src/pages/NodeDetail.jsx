@@ -685,145 +685,128 @@ export default function NodeDetail() {
 
         {/* ── CPU — широкий блок ── */}
         <Card title="Процессор (CPU)" icon={Cpu} iconColor="text-blue-400" className="xl:col-span-2 flex flex-col">
-          <div className="flex gap-4 mb-4 flex-1 min-h-0">
+          <div className="flex gap-4 flex-1 min-h-0">
 
-            {/* Левая колонка: всё о процессоре */}
-            <div className="flex-shrink-0 self-start flex flex-col gap-2 bg-slate-900/60 rounded-2xl border border-slate-700/30 px-4 py-4 min-w-[150px]">
-              {/* Большой % */}
-              <div className="text-center">
-                <div className={`text-5xl font-black tabular-nums leading-none ${colorByPct(node.cpu)}`}>
-                  {Math.round(node.cpu || 0)}%
+            {/* Левая колонка: инфо + разбивка нагрузки */}
+            <div className="flex-shrink-0 flex flex-col gap-3 w-[190px]">
+              {/* Инфо-панель */}
+              <div className="flex flex-col gap-2 bg-slate-900/60 rounded-2xl border border-slate-700/30 px-4 py-4">
+                <div className="text-center">
+                  <div className={`text-5xl font-black tabular-nums leading-none ${colorByPct(node.cpu)}`}>
+                    {Math.round(node.cpu || 0)}%
+                  </div>
+                  <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">Загрузка CPU</div>
                 </div>
-                <div className="text-[10px] text-slate-500 uppercase tracking-wider mt-1">Загрузка CPU</div>
-              </div>
-
-              <div className="border-t border-slate-700/40 pt-2 space-y-1.5">
-                {/* Модель */}
-                {node.cpuModel && (
-                  <div title={node.cpuModel} className="text-[11px] text-slate-400 leading-tight line-clamp-2 text-center">
-                    {node.cpuModel}
-                  </div>
-                )}
-
-                {/* Частота + ядра */}
-                <div className="flex items-center justify-between text-xs">
-                  {node.cpuFreqMHz > 0 && (
-                    <span className="text-slate-400 tabular-nums">{(node.cpuFreqMHz / 1000).toFixed(2)} <span className="text-slate-600">GHz</span></span>
+                <div className="border-t border-slate-700/40 pt-2 space-y-1.5">
+                  {node.cpuModel && (
+                    <div title={node.cpuModel} className="text-[11px] text-slate-400 leading-tight line-clamp-2 text-center">
+                      {node.cpuModel}
+                    </div>
                   )}
-                  {cpuCores.length > 0 && (
-                    <span className="text-slate-500">{cpuCores.length} <span className="text-slate-600">ядер</span></span>
+                  <div className="flex items-center justify-between text-xs">
+                    {node.cpuFreqMHz > 0 && (
+                      <span className="text-slate-400 tabular-nums">{(node.cpuFreqMHz / 1000).toFixed(2)} <span className="text-slate-600">GHz</span></span>
+                    )}
+                    {cpuCores.length > 0 && (
+                      <span className="text-slate-500">{cpuCores.length} <span className="text-slate-600">ядер</span></span>
+                    )}
+                  </div>
+                  {(node.cpuTemp || 0) > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-600">Температура</span>
+                      <span className={`font-semibold tabular-nums ${node.cpuTemp > 80 ? 'text-red-400' : node.cpuTemp > 60 ? 'text-amber-400' : 'text-emerald-400'}`}>
+                        {Math.round(node.cpuTemp)}°C
+                      </span>
+                    </div>
                   )}
-                </div>
-
-                {/* Температура */}
-                {(node.cpuTemp || 0) > 0 && (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-600">Температура</span>
-                    <span className={`font-semibold tabular-nums ${node.cpuTemp > 80 ? 'text-red-400' : node.cpuTemp > 60 ? 'text-amber-400' : 'text-emerald-400'}`}>
-                      {Math.round(node.cpuTemp)}°C
-                    </span>
-                  </div>
-                )}
-
-                {/* I/O Wait + Steal */}
-                {!isWindows && (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-600">I/O Wait</span>
-                    <span className="text-amber-400 tabular-nums font-medium">{(node.cpuIowait || 0).toFixed(1)}%</span>
-                  </div>
-                )}
-                {(node.cpuSteal || 0) > 0 && (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-600">Steal</span>
-                    <span className="text-red-400 tabular-nums font-medium">{(node.cpuSteal).toFixed(1)}%</span>
-                  </div>
-                )}
-
-                {/* Load Average (Linux) */}
-                {!isWindows && (node.loadAvg1 || 0) > 0 && (
-                  <div className="pt-1 border-t border-slate-700/30">
-                    <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-1">Load Avg</div>
-                    <div className="flex gap-2 text-xs tabular-nums">
-                      <div className="flex-1 text-center">
-                        <div className={`font-bold ${node.loadAvg1 > cpuCores.length ? 'text-red-400' : node.loadAvg1 > cpuCores.length * 0.7 ? 'text-amber-400' : 'text-slate-300'}`}>
-                          {(node.loadAvg1 || 0).toFixed(2)}
-                        </div>
-                        <div className="text-slate-600 text-[10px]">1м</div>
-                      </div>
-                      <div className="flex-1 text-center">
-                        <div className={`font-bold ${node.loadAvg5 > cpuCores.length ? 'text-red-400' : node.loadAvg5 > cpuCores.length * 0.7 ? 'text-amber-400' : 'text-slate-300'}`}>
-                          {(node.loadAvg5 || 0).toFixed(2)}
-                        </div>
-                        <div className="text-slate-600 text-[10px]">5м</div>
-                      </div>
-                      <div className="flex-1 text-center">
-                        <div className={`font-bold ${node.loadAvg15 > cpuCores.length ? 'text-red-400' : node.loadAvg15 > cpuCores.length * 0.7 ? 'text-amber-400' : 'text-slate-300'}`}>
-                          {(node.loadAvg15 || 0).toFixed(2)}
-                        </div>
-                        <div className="text-slate-600 text-[10px]">15м</div>
+                  {!isWindows && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-600">I/O Wait</span>
+                      <span className="text-amber-400 tabular-nums font-medium">{(node.cpuIowait || 0).toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {(node.cpuSteal || 0) > 0 && (
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-slate-600">Steal</span>
+                      <span className="text-red-400 tabular-nums font-medium">{(node.cpuSteal).toFixed(1)}%</span>
+                    </div>
+                  )}
+                  {!isWindows && (node.loadAvg1 || 0) > 0 && (
+                    <div className="pt-1 border-t border-slate-700/30">
+                      <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-1">Load Avg</div>
+                      <div className="flex gap-2 text-xs tabular-nums">
+                        {[['1м', node.loadAvg1], ['5м', node.loadAvg5], ['15м', node.loadAvg15]].map(([label, val]) => (
+                          <div key={label} className="flex-1 text-center">
+                            <div className={`font-bold ${val > cpuCores.length ? 'text-red-400' : val > cpuCores.length * 0.7 ? 'text-amber-400' : 'text-slate-300'}`}>
+                              {(val || 0).toFixed(2)}
+                            </div>
+                            <div className="text-slate-600 text-[10px]">{label}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </div>
               </div>
+
+              {/* Разбивка нагрузки под инфо-панелью */}
+              {(node.cpuUser > 0 || node.cpuSystem > 0) && (
+                <div className="bg-slate-900/40 rounded-xl border border-slate-700/30 px-3 py-3">
+                  <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Разбивка</div>
+                  <div className="w-full h-2.5 rounded-full overflow-hidden flex mb-2">
+                    {node.cpuUser > 0 && <div className="h-full bg-blue-500" style={{ width: `${node.cpuUser}%` }} />}
+                    {node.cpuSystem > 0 && <div className="h-full bg-violet-500" style={{ width: `${node.cpuSystem}%` }} />}
+                    {(node.cpuIowait || 0) > 0 && <div className="h-full bg-amber-500" style={{ width: `${node.cpuIowait}%` }} />}
+                    {(node.cpuSteal || 0) > 0 && <div className="h-full bg-red-500" style={{ width: `${node.cpuSteal}%` }} />}
+                    <div className="h-full bg-slate-700/40 flex-1" />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    {[
+                      { label: 'User', value: node.cpuUser, color: 'bg-blue-500' },
+                      { label: 'System', value: node.cpuSystem, color: 'bg-violet-500' },
+                      { label: 'I/O Wait', value: node.cpuIowait, color: 'bg-amber-500' },
+                      { label: 'Steal', value: node.cpuSteal, color: 'bg-red-500' },
+                    ].filter(s => (s.value || 0) > 0).map(s => (
+                      <div key={s.label} className="flex items-center justify-between text-xs text-slate-500">
+                        <div className="flex items-center gap-1.5">
+                          <span className={`w-2 h-2 rounded-sm flex-shrink-0 ${s.color}`} />
+                          {s.label}
+                        </div>
+                        <span className="text-slate-300 tabular-nums">{(s.value || 0).toFixed(1)}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Правая часть: график растягивается */}
-            <div className="flex-1 min-w-0 flex flex-col min-h-[160px]">
+            {/* Правая колонка: график + ядра */}
+            <div className="flex-1 min-w-0 flex flex-col gap-3 min-h-0">
               <CpuHistory data={liveBuffer} className="flex-1 min-h-[160px]" />
-            </div>
-          </div>
 
-          {/* Нижняя строка: breakdown + ядра */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-3 border-t border-slate-700/30 mt-auto">
-            {(node.cpuUser > 0 || node.cpuSystem > 0) && (
-              <div>
-                <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Разбивка нагрузки</div>
-                <div className="w-full h-3 rounded-full overflow-hidden flex">
-                  {node.cpuUser > 0 && <div className="h-full bg-blue-500 transition-all" style={{ width: `${node.cpuUser}%` }} title={`User: ${node.cpuUser.toFixed(1)}%`} />}
-                  {node.cpuSystem > 0 && <div className="h-full bg-violet-500 transition-all" style={{ width: `${node.cpuSystem}%` }} title={`System: ${node.cpuSystem.toFixed(1)}%`} />}
-                  {(node.cpuIowait || 0) > 0 && <div className="h-full bg-amber-500 transition-all" style={{ width: `${node.cpuIowait}%` }} title={`I/O Wait: ${node.cpuIowait.toFixed(1)}%`} />}
-                  {(node.cpuSteal || 0) > 0 && <div className="h-full bg-red-500 transition-all" style={{ width: `${node.cpuSteal}%` }} title={`Steal: ${node.cpuSteal.toFixed(1)}%`} />}
-                  <div className="h-full bg-slate-700/40 flex-1" />
-                </div>
-                <div className="flex gap-3 mt-1.5 flex-wrap">
-                  {[
-                    { label: 'User', value: node.cpuUser, color: 'bg-blue-500' },
-                    { label: 'System', value: node.cpuSystem, color: 'bg-violet-500' },
-                    { label: 'I/O Wait', value: node.cpuIowait, color: 'bg-amber-500' },
-                    { label: 'Steal', value: node.cpuSteal, color: 'bg-red-500' },
-                  ].filter(s => (s.value || 0) > 0).map(s => (
-                    <div key={s.label} className="flex items-center gap-1 text-xs text-slate-500">
-                      <span className={`w-2 h-2 rounded-sm ${s.color}`} />
-                      {s.label}: <span className="text-slate-300 tabular-nums">{(s.value || 0).toFixed(1)}%</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {cpuCores.length > 0 && (
-              <div>
-                <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">
-                  Загрузка по ядрам ({cpuCores.length})
-                </div>
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
-                  {cpuCores.map((pct, i) => (
-                    <div key={i} className="bg-slate-900/60 rounded-lg p-2 border border-slate-700/30">
-                      <div className="flex justify-between items-center mb-1">
-                        <span className="text-xs text-slate-500">Core {i + 1}</span>
-                        <span className={`text-xs font-bold tabular-nums ${colorByPct(pct)}`}>{pct.toFixed(0)}%</span>
+              {cpuCores.length > 0 && (
+                <div className="border-t border-slate-700/30 pt-3">
+                  <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">
+                    Загрузка по ядрам ({cpuCores.length})
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
+                    {cpuCores.map((pct, i) => (
+                      <div key={i} className="bg-slate-900/60 rounded-lg p-2 border border-slate-700/30">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="text-xs text-slate-500">Core {i + 1}</span>
+                          <span className={`text-xs font-bold tabular-nums ${colorByPct(pct)}`}>{pct.toFixed(0)}%</span>
+                        </div>
+                        <div className="w-full bg-slate-700/60 h-1.5 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all duration-500 ${barColor(pct)}`}
+                            style={{ width: `${Math.min(pct, 100)}%` }} />
+                        </div>
                       </div>
-                      <div className="w-full bg-slate-700/60 h-1.5 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full transition-all duration-500 ${barColor(pct)}`}
-                          style={{ width: `${Math.min(pct, 100)}%` }} />
-                      </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>{/* end right column */}
+          </div>{/* end flex row */}
         </Card>
 
         {/* ── RAM + Накопители ── */}
