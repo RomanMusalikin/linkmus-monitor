@@ -4,6 +4,7 @@ import { Monitor, Terminal, Trash2, Wifi, GripVertical, Pencil, Check, X } from 
 import Sparkline from '../charts/Sparkline';
 import { deleteNode, renameNode } from '../../lib/api';
 import { dragState } from '../../lib/dragState';
+import { useNodesContext } from '../../context/NodesContext';
 
 function getOSLabel(os) {
   if (!os) return 'Unknown OS';
@@ -81,6 +82,7 @@ function AgentVersionBadge({ version, serverVersion }) {
 }
 
 export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging, serverVersion }) {
+  const { refresh } = useNodesContext();
   const isWindows = node.os?.toLowerCase().includes('windows');
   const ramPct = node.ramTotal > 0 ? (node.ramUsed / node.ramTotal) * 100 : 0;
   const [confirming, setConfirming] = useState(false);
@@ -125,6 +127,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
     try {
       await renameNode(node.name, alias === node.name ? '' : alias);
       setLocalDisplayName(alias === node.name ? '' : alias);
+      refresh?.();
     } catch { /* ignore */ }
     setRenaming(false);
   }

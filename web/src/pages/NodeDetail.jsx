@@ -220,7 +220,7 @@ function ProcessesCard({ node, className }) {
 export default function NodeDetail() {
   const { nodeId } = useParams();
   const navigate = useNavigate();
-  const { data: nodes, loading, error, serverVersion } = useNodesContext();
+  const { data: nodes, loading, error, serverVersion, refresh } = useNodesContext();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -408,6 +408,7 @@ export default function NodeDetail() {
                         const alias = renameValue.trim();
                         await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
                         setLocalDisplayName(alias === node.name ? '' : alias);
+                        refresh?.();
                         setRenaming(false);
                       }
                       if (e.key === 'Escape') setRenaming(false);
@@ -419,6 +420,7 @@ export default function NodeDetail() {
                     const alias = renameValue.trim();
                     await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
                     setLocalDisplayName(alias === node.name ? '' : alias);
+                    refresh?.();
                     setRenaming(false);
                   }} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
                   <button onClick={() => setRenaming(false)} className="text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>
