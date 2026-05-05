@@ -210,6 +210,19 @@ func InvalidateNodesCache(db *sql.DB) {
 	}()
 }
 
+// removeFromNodesCache мгновенно удаляет узел из кэша без запроса к БД.
+func removeFromNodesCache(name string) {
+	nodesCacheMu.Lock()
+	defer nodesCacheMu.Unlock()
+	out := nodesCacheData[:0]
+	for _, n := range nodesCacheData {
+		if n.Name != name {
+			out = append(out, n)
+		}
+	}
+	nodesCacheData = out
+}
+
 func getCachedNodes() ([]NodeSummary, time.Time) {
 	nodesCacheMu.RLock()
 	defer nodesCacheMu.RUnlock()
@@ -261,6 +274,7 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	dbConn.Exec(`DELETE FROM metrics_hourly WHERE node_name = ?`, name)
 	dbConn.Exec(`DELETE FROM node_aliases WHERE node_name = ?`, name)
+	removeFromNodesCache(name)
 	w.WriteHeader(http.StatusOK)
 }
 
