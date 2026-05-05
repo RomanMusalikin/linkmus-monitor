@@ -3,9 +3,9 @@ import { useState, useRef, useEffect } from 'react';
 import {
   ArrowLeft, Cpu, Database, HardDrive, Globe,
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
-  Wifi, MemoryStick, Trash2, Download
+  Wifi, MemoryStick, Trash2, Download, Pencil, Check, X
 } from 'lucide-react';
-import { deleteNode, fetchNodes, fetchNodeHistory } from '../lib/api';
+import { deleteNode, fetchNodes, fetchNodeHistory, renameNode } from '../lib/api';
 import { useNodesContext } from '../context/NodesContext';
 import { useVersion } from '../hooks/useVersion';
 import CpuGauge from '../components/charts/CpuGauge';
@@ -223,6 +223,9 @@ export default function NodeDetail() {
   const { data: nodes, loading, error, serverVersion } = useNodesContext();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState('');
+  const renameInputRef = useRef(null);
   const [fullHistory, setFullHistory] = useState(null);
   const [loadingFull, setLoadingFull] = useState(false);
   const [historyRange, setHistoryRange] = useState('24h');
@@ -398,7 +401,39 @@ export default function NodeDetail() {
           </div>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
-              <h1 className="text-xl font-bold text-slate-100">{node.displayName || node.name}</h1>
+              {renaming ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    ref={renameInputRef}
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter') {
+                        const alias = renameValue.trim();
+                        await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
+                        setRenaming(false);
+                      }
+                      if (e.key === 'Escape') setRenaming(false);
+                    }}
+                    className="text-xl font-bold bg-slate-700 text-slate-100 rounded-lg px-2 py-0.5 outline-none border border-blue-500/50 w-48"
+                    maxLength={64}
+                  />
+                  <button onClick={async () => {
+                    const alias = renameValue.trim();
+                    await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
+                    setRenaming(false);
+                  }} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
+                  <button onClick={() => setRenaming(false)} className="text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 group/name">
+                  <h1 className="text-xl font-bold text-slate-100">{node.displayName || node.name}</h1>
+                  <button onClick={() => { setRenameValue(node.displayName || node.name); setRenaming(true); setTimeout(() => renameInputRef.current?.select(), 0); }}
+                    className="opacity-0 group-hover/name:opacity-100 transition-opacity text-slate-600 hover:text-slate-400">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
               <span className={`w-2 h-2 rounded-full ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium
                 ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
