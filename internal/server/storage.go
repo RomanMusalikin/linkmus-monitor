@@ -433,6 +433,7 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			SNMPSysName:    snmp.SysName,
 			SNMPCPULoad:    snmp.CPULoad,
 			SNMPIfCount:    snmp.IfCount,
+			SNMPIfaces:     snmpIfacesToAPI(snmp.Ifaces),
 			FSRM:           fsrmList,
 			AgentVersion:   r.agentVersion,
 			CPUHistory:  queryCPUHistory(db, r.name, full),
@@ -790,4 +791,22 @@ func queryDiskHistory(db *sql.DB, name string, full bool) []DiskPoint {
 		}
 	}
 	return result
+}
+
+// snmpIfacesToAPI конвертирует внутренний тип в API-тип для фронтенда.
+func snmpIfacesToAPI(ifaces []SNMPIfaceResult) []SNMPIfaceInfo {
+	if len(ifaces) == 0 {
+		return nil
+	}
+	out := make([]SNMPIfaceInfo, 0, len(ifaces))
+	for _, f := range ifaces {
+		out = append(out, SNMPIfaceInfo{
+			Index:       f.Index,
+			Name:        f.Name,
+			SpeedMbps:   float64(f.SpeedBps) / 1_000_000,
+			RecvByteSec: f.RecvByteSec,
+			SentByteSec: f.SentByteSec,
+		})
+	}
+	return out
 }

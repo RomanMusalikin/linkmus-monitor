@@ -1081,6 +1081,54 @@ export default function NodeDetail() {
                 <InfoRow label="Интерфейсов (ifNumber)" value={node.snmpIfCount} />
               )}
             </div>
+
+            {/* Таблица трафика по интерфейсам */}
+            {node.snmpIfaces && node.snmpIfaces.length > 0 && (
+              <div className="mt-3">
+                <div className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-2">Трафик по интерфейсам</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs text-slate-300">
+                    <thead>
+                      <tr className="text-slate-500 border-b border-slate-700/50">
+                        <th className="text-left pb-1 pr-3 font-medium">Интерфейс</th>
+                        <th className="text-right pb-1 pr-3 font-medium">Скорость</th>
+                        <th className="text-right pb-1 pr-3 font-medium">↓ Вход</th>
+                        <th className="text-right pb-1 font-medium">↑ Выход</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {node.snmpIfaces.map((iface) => {
+                        const fmtSpeed = (bps) => {
+                          if (bps >= 1e9) return `${(bps / 1e9).toFixed(1)} ГБ/с`
+                          if (bps >= 1e6) return `${(bps / 1e6).toFixed(0)} МБ/с`
+                          if (bps >= 1e3) return `${(bps / 1e3).toFixed(0)} КБ/с`
+                          return `${bps.toFixed(0)} Б/с`
+                        }
+                        const fmtLink = (mbps) => {
+                          if (!mbps) return '—'
+                          if (mbps >= 1000) return `${(mbps / 1000).toFixed(0)} Гбит/с`
+                          return `${mbps.toFixed(0)} Мбит/с`
+                        }
+                        const hasTraffic = iface.recvByteSec > 0 || iface.sentByteSec > 0
+                        return (
+                          <tr key={iface.index} className="border-b border-slate-700/30 hover:bg-slate-700/20">
+                            <td className="py-1 pr-3 font-mono text-slate-200">{iface.name || `if${iface.index}`}</td>
+                            <td className="py-1 pr-3 text-right text-slate-400">{fmtLink(iface.speedMbps)}</td>
+                            <td className={`py-1 pr-3 text-right ${hasTraffic ? 'text-emerald-400' : 'text-slate-500'}`}>
+                              {hasTraffic ? fmtSpeed(iface.recvByteSec) : '—'}
+                            </td>
+                            <td className={`py-1 text-right ${hasTraffic ? 'text-sky-400' : 'text-slate-500'}`}>
+                              {hasTraffic ? fmtSpeed(iface.sentByteSec) : '—'}
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <div className="text-xs text-slate-600 mt-1">Обновляется каждые 30 сек. Трафик появится после второго опроса.</div>
+              </div>
+            )}
           </Card>
         )}
 

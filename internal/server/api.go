@@ -44,6 +44,15 @@ type ProcessInfo struct {
 	User string  `json:"user"`
 }
 
+// SNMPIfaceInfo — трафик одного SNMP-интерфейса (для фронтенда)
+type SNMPIfaceInfo struct {
+	Index       int     `json:"index"`
+	Name        string  `json:"name"`
+	SpeedMbps   float64 `json:"speedMbps"`
+	RecvByteSec float64 `json:"recvByteSec"`
+	SentByteSec float64 `json:"sentByteSec"`
+}
+
 // FSRMInfo — квота FSRM (Windows, srv-corp-01)
 type FSRMInfo struct {
 	QuotaPath         string  `json:"quotaPath"`
@@ -147,11 +156,12 @@ type NodeSummary struct {
 	DNSMs          float64 `json:"dnsMs"`
 
 	// SNMP (server-side poller)
-	SNMPCollected  bool   `json:"snmpCollected"`
-	SNMPSysUpTime  uint32 `json:"snmpSysUpTime"`
-	SNMPSysName    string `json:"snmpSysName"`
-	SNMPCPULoad    int    `json:"snmpCpuLoad"`
-	SNMPIfCount    int    `json:"snmpIfCount"`
+	SNMPCollected  bool            `json:"snmpCollected"`
+	SNMPSysUpTime  uint32          `json:"snmpSysUpTime"`
+	SNMPSysName    string          `json:"snmpSysName"`
+	SNMPCPULoad    int             `json:"snmpCpuLoad"`
+	SNMPIfCount    int             `json:"snmpIfCount"`
+	SNMPIfaces     []SNMPIfaceInfo `json:"snmpIfaces"`
 
 	// FSRM (agent-side, Windows only)
 	FSRM []FSRMInfo `json:"fsrm"`
