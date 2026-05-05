@@ -44,7 +44,8 @@ func CollectAllDisks() []DiskInfo {
 			strings.HasPrefix(p.Mountpoint, "/dev") ||
 			strings.HasPrefix(p.Mountpoint, "/snap") ||
 			strings.HasPrefix(p.Mountpoint, "/run") ||
-			strings.HasPrefix(p.Mountpoint, "/media") {
+			strings.HasPrefix(p.Mountpoint, "/media") ||
+			strings.HasPrefix(p.Mountpoint, "/boot") {
 			continue
 		}
 		u, err := disk.Usage(p.Mountpoint)

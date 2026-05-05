@@ -663,7 +663,7 @@ export default function NodeDetail() {
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
                       <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-25} textAnchor="end" dy={4} height={32} />
-                      <YAxis {...axisProps} tickFormatter={v => fmtBytes(v)} width={44} />
+                      <YAxis {...axisProps} tickFormatter={v => fmtBytes(v)} width={58} />
                       <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [v != null ? fmtBytes(v) : '—', name === 'netRecv' ? '↓' : '↑']} labelStyle={{ color: '#64748b' }} />
                       <Area type="monotone" dataKey="netRecv" stroke="#06b6d4" strokeWidth={1.5} fill="url(#lhRecv)" dot={false} isAnimationActive={false} connectNulls={false} />
                       <Area type="monotone" dataKey="netSent" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhSent)" dot={false} isAnimationActive={false} connectNulls={false} />
