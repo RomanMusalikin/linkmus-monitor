@@ -228,21 +228,13 @@ export default function NodeDetail() {
   const renameInputRef = useRef(null);
   const [fullHistory, setFullHistory] = useState(null);
   const [loadingFull, setLoadingFull] = useState(false);
-  const [historyRange, setHistoryRange] = useState('24h');
+  const [historyRange, setHistoryRange] = useState('live');
   const [longHistory, setLongHistory] = useState(null);
   const [loadingLong, setLoadingLong] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const exportCloseTimer = useRef(null);
   const [liveBuffer, setLiveBuffer] = useState([]);
   const liveBufferSeeded = useRef(false);
-
-  // Авто-загрузка 24ч при открытии страницы
-  useEffect(() => {
-    if (nodeId && !fullHistory) {
-      selectHistoryRange('24h');
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodeId]);
 
   // Засеваем liveBuffer историческими данными при первой загрузке
   useEffect(() => {
