@@ -672,8 +672,11 @@ export default function NodeDetail() {
       {/* ── Основная сетка ── */}
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-5 items-start">
 
+        {/* ── CPU + RAM — одна строка, выровненная по высоте ── */}
+        <div className="xl:col-span-3 grid grid-cols-1 xl:grid-cols-3 gap-5">
+
         {/* ── CPU — широкий блок ── */}
-        <Card title="Процессор (CPU)" icon={Cpu} iconColor="text-blue-400" className="xl:col-span-2">
+        <Card title="Процессор (CPU)" icon={Cpu} iconColor="text-blue-400" className="xl:col-span-2 flex flex-col">
           <div className="flex gap-4 mb-4">
 
             {/* Левая колонка: всё о процессоре */}
@@ -757,14 +760,14 @@ export default function NodeDetail() {
               </div>
             </div>
 
-            {/* Правая часть: только график */}
-            <div className="flex-1 min-w-0 min-h-[160px]">
-              <CpuHistory data={liveBuffer} />
+            {/* Правая часть: график растягивается */}
+            <div className="flex-1 min-w-0 flex flex-col min-h-[160px]">
+              <CpuHistory data={liveBuffer} className="flex-1 min-h-[160px]" />
             </div>
           </div>
 
           {/* Нижняя строка: breakdown + ядра */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-3 border-t border-slate-700/30">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 pt-3 border-t border-slate-700/30 mt-auto">
             {(node.cpuUser > 0 || node.cpuSystem > 0) && (
               <div>
                 <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Разбивка нагрузки</div>
@@ -974,6 +977,7 @@ export default function NodeDetail() {
             )}
           </div>
         </Card>
+        </div>{/* end CPU+RAM sub-row */}
 
         {/* ── Сеть ── */}
         <Card title={`Сеть${node.netInterface ? ` · ${node.netInterface}` : ''}`}
@@ -1132,7 +1136,7 @@ export default function NodeDetail() {
 
         {/* ── FSRM ── (только Windows/srv-corp-01) */}
         {node.fsrm && node.fsrm.length > 0 && (
-          <Card title="FSRM — Квоты" icon={HardDrive} iconColor="text-orange-400" className="xl:col-span-3">
+          <Card title="FSRM — Квоты" icon={HardDrive} iconColor="text-orange-400">
             <div className="space-y-4">
               {node.fsrm.map((q, i) => {
                 const pct = q.quotaUsedPercent || 0;

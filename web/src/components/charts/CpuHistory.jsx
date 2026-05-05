@@ -1,6 +1,6 @@
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
 
-export default function CpuHistory({ data }) {
+export default function CpuHistory({ data, className = 'h-64' }) {
   const chartData = (data || []).map(p => ({
     cpu: p.value != null ? p.value : (p.cpu != null ? p.cpu : null),
     time: p.time ?? '',
@@ -10,7 +10,7 @@ export default function CpuHistory({ data }) {
   const fmt = chartData.length > 36 ? (t) => t.slice(0, 5) : undefined;
 
   return (
-    <div className="h-64 w-full">
+    <div className={`${className} w-full`}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={chartData} margin={{ top: 10, right: 8, left: -20, bottom: 28 }}>
           <defs>
