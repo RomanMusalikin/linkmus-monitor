@@ -670,10 +670,10 @@ export default function NodeDetail() {
                 )}
 
                 {/* I/O Wait + Steal */}
-                {(node.cpuIowait || 0) > 0 && (
+                {!isWindows && (
                   <div className="flex items-center justify-between text-xs">
                     <span className="text-slate-600">I/O Wait</span>
-                    <span className="text-amber-400 tabular-nums font-medium">{(node.cpuIowait).toFixed(1)}%</span>
+                    <span className="text-amber-400 tabular-nums font-medium">{(node.cpuIowait || 0).toFixed(1)}%</span>
                   </div>
                 )}
                 {(node.cpuSteal || 0) > 0 && (
