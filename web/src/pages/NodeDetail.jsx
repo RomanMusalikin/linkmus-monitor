@@ -1136,7 +1136,6 @@ export default function NodeDetail() {
                     </tbody>
                   </table>
                 </div>
-                <div className="text-xs text-slate-600 mt-1">Обновляется каждые 30 сек. Трафик появится после второго опроса.</div>
               </div>
             )}
           </Card>
