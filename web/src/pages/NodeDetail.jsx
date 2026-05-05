@@ -550,8 +550,8 @@ export default function NodeDetail() {
               cpu: p.value,
               ram: fullHistory.ramHistory?.[i]?.value ?? null,
               disk: fullHistory.diskHistory?.[i]?.value ?? null,
-              netRecv: null,
-              netSent: null,
+              netRecv: fullHistory.netHistory?.[i]?.recv ?? null,
+              netSent: fullHistory.netHistory?.[i]?.sent ?? null,
             }))
           : longHistory;
 
@@ -645,8 +645,8 @@ export default function NodeDetail() {
                 </ResponsiveContainer>
               </div>
 
-              {/* Сеть (только 7д+) */}
-              {!src24 && (
+              {/* Сеть */}
+              {(
                 <div>
                   <div className="text-xs text-slate-500 mb-1">Сеть B/s</div>
                   <ResponsiveContainer width="100%" height={120}>
