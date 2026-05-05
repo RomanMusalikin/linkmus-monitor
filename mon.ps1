@@ -93,6 +93,14 @@ function Do-Update {
 
     Start-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
     Write-Ok "Agent updated to $latestTag"
+
+    try {
+        Invoke-WebRequest -Uri "https://raw.githubusercontent.com/$REPO/main/mon.ps1" `
+            -OutFile "$INSTALL_DIR\mon.ps1" -UseBasicParsing -ErrorAction Stop
+        Write-Ok "CLI mon.ps1 updated"
+    } catch {
+        Write-Warn "Could not update mon.ps1: $_"
+    }
 }
 
 # -- Entry point --
