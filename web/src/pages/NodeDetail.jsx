@@ -1068,7 +1068,7 @@ export default function NodeDetail() {
 
         {/* ── SNMP ── (показываем если собраны данные) */}
         {node.snmpCollected && (
-          <Card title="SNMP" icon={Activity} iconColor="text-cyan-400">
+          <Card title="SNMP" icon={Activity} iconColor="text-cyan-400" className="xl:col-span-2">
             <div className="space-y-1">
               {node.snmpSysName && node.snmpSysName !== '0' && <InfoRow label="Системное имя" value={node.snmpSysName} />}
               {node.snmpSysUpTime > 0 && (
@@ -1087,13 +1087,13 @@ export default function NodeDetail() {
               <div className="mt-3">
                 <div className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-2">Трафик по интерфейсам</div>
                 <div className="overflow-x-auto">
-                  <table className="w-full text-xs text-slate-300">
+                  <table className="w-full text-xs text-slate-300 table-fixed">
                     <thead>
                       <tr className="text-slate-500 border-b border-slate-700/50">
-                        <th className="text-left pb-1 pr-3 font-medium">Интерфейс</th>
-                        <th className="text-right pb-1 pr-3 font-medium">Скорость</th>
-                        <th className="text-right pb-1 pr-3 font-medium">↓ Вход</th>
-                        <th className="text-right pb-1 font-medium">↑ Выход</th>
+                        <th className="text-left pb-1 pr-3 font-medium w-[55%]">Интерфейс</th>
+                        <th className="text-right pb-1 pr-3 font-medium w-[15%]">Скорость</th>
+                        <th className="text-right pb-1 pr-3 font-medium w-[15%]">↓ Вход</th>
+                        <th className="text-right pb-1 font-medium w-[15%]">↑ Выход</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1112,7 +1112,7 @@ export default function NodeDetail() {
                         const hasTraffic = iface.recvByteSec > 0 || iface.sentByteSec > 0
                         return (
                           <tr key={iface.index} className="border-b border-slate-700/30 hover:bg-slate-700/20">
-                            <td className="py-1 pr-3 font-mono text-slate-200">{iface.name || `if${iface.index}`}</td>
+                            <td className="py-1 pr-3 font-mono text-slate-200 break-words">{iface.name || `if${iface.index}`}</td>
                             <td className="py-1 pr-3 text-right text-slate-400">{fmtLink(iface.speedMbps)}</td>
                             <td className={`py-1 pr-3 text-right ${hasTraffic ? 'text-emerald-400' : 'text-slate-500'}`}>
                               {hasTraffic ? fmtSpeed(iface.recvByteSec) : '—'}
@@ -1134,7 +1134,7 @@ export default function NodeDetail() {
 
         {/* ── FSRM ── (только Windows/srv-corp-01) */}
         {node.fsrm && node.fsrm.length > 0 && (
-          <Card title="FSRM — Квоты" icon={HardDrive} iconColor="text-orange-400" className="xl:col-span-2">
+          <Card title="FSRM — Квоты" icon={HardDrive} iconColor="text-orange-400" className="xl:col-span-3">
             <div className="space-y-4">
               {node.fsrm.map((q, i) => {
                 const pct = q.quotaUsedPercent || 0;
