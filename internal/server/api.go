@@ -210,6 +210,22 @@ func InvalidateNodesCache(db *sql.DB) {
 	}()
 }
 
+// updateAliasInCache мгновенно обновляет DisplayName узла в кэше без запроса к БД.
+func updateAliasInCache(name, alias string) {
+	nodesCacheMu.Lock()
+	defer nodesCacheMu.Unlock()
+	for i := range nodesCacheData {
+		if nodesCacheData[i].Name == name {
+			if alias == "" {
+				nodesCacheData[i].DisplayName = name
+			} else {
+				nodesCacheData[i].DisplayName = alias
+			}
+			break
+		}
+	}
+}
+
 // removeFromNodesCache мгновенно удаляет узел из кэша без запроса к БД.
 func removeFromNodesCache(name string) {
 	nodesCacheMu.Lock()
@@ -253,7 +269,7 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 			return
 		}
-		InvalidateNodesCache(dbConn)
+		updateAliasInCache(name, strings.TrimSpace(body.Alias))
 		w.WriteHeader(http.StatusOK)
 		return
 	}
