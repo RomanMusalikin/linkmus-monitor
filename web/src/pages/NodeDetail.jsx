@@ -569,108 +569,117 @@ export default function NodeDetail() {
         );
 
         const xInterval = Math.max(0, Math.floor(histData.length / 6) - 1);
-        const tooltipStyle = { background: '#1e293b', border: '1px solid #334155', borderRadius: 8, fontSize: 11 };
-        const axisProps = {
-          stroke: '#475569', fontSize: 10, tickLine: false, axisLine: false,
+        const tooltipStyle = {
+          background: '#0f172a', border: '1px solid #334155',
+          borderRadius: 10, fontSize: 12, boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
         };
-        const chartMargin = { top: 4, right: 8, bottom: 0, left: 0 };
+        const axisProps = { stroke: '#334155', fontSize: 10, tickLine: false, axisLine: false };
+        const chartMargin = { top: 8, right: 12, bottom: 0, left: 0 };
+
+        const ChartPanel = ({ title, color, badge, children }) => (
+          <div className="bg-slate-900/60 rounded-xl border border-slate-700/30 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-semibold text-slate-300 uppercase tracking-wider">{title}</span>
+              {badge && <span className="text-[10px] text-slate-500 bg-slate-800 rounded-full px-2 py-0.5 border border-slate-700/50">{badge}</span>}
+              <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: color, boxShadow: `0 0 6px ${color}` }} />
+            </div>
+            {children}
+          </div>
+        );
 
         return (
-          <div className="mb-6 bg-slate-800/60 rounded-2xl border border-slate-700/50 p-5">
-            <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-4">
-              История за {rangeLabel}
-              <span className="ml-2 text-slate-600 normal-case">· {histData.length} точек ({pointLabel})</span>
+          <div className="mb-6 bg-slate-800/40 rounded-2xl border border-slate-700/40 p-5">
+            {/* Заголовок */}
+            <div className="flex items-center gap-3 mb-5">
+              <span className="text-xs font-bold text-slate-300 uppercase tracking-widest">История за {rangeLabel}</span>
+              <span className="h-px flex-1 bg-slate-700/50" />
+              <span className="text-[11px] text-slate-500">{histData.length} точек · {pointLabel}</span>
             </div>
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+
+            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
 
               {/* CPU */}
-              <div>
-                <div className="text-xs text-slate-500 mb-1">CPU %</div>
-                <ResponsiveContainer width="100%" height={120}>
+              <ChartPanel title="Процессор" color="#3b82f6">
+                <ResponsiveContainer width="100%" height={140}>
                   <AreaChart data={histData} margin={chartMargin}>
                     <defs>
                       <linearGradient id="lhCpu" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-25} textAnchor="end" dy={4} height={32} />
+                    <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
                     <YAxis {...axisProps} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={v => `${v}%`} width={36} />
                     <Tooltip contentStyle={tooltipStyle} formatter={v => [v != null ? `${v.toFixed(1)}%` : '—', 'CPU']} labelStyle={{ color: '#64748b' }} />
-                    <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhCpu)" dot={false} isAnimationActive={false} connectNulls={false} />
+                    <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={2} fill="url(#lhCpu)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
+              </ChartPanel>
 
               {/* RAM */}
-              <div>
-                <div className="text-xs text-slate-500 mb-1">{ramLabel}</div>
-                <ResponsiveContainer width="100%" height={120}>
+              <ChartPanel title="Память" color="#8b5cf6">
+                <ResponsiveContainer width="100%" height={140}>
                   <AreaChart data={histData} margin={chartMargin}>
                     <defs>
                       <linearGradient id="lhRam" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#8b5cf6" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-25} textAnchor="end" dy={4} height={32} />
+                    <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
                     <YAxis {...axisProps} domain={src24 ? [0, 100] : ['auto', 'auto']}
                       ticks={src24 ? [0, 25, 50, 75, 100] : undefined}
                       tickFormatter={src24 ? v => `${v}%` : v => `${v.toFixed(0)}G`} width={36} />
                     <Tooltip contentStyle={tooltipStyle} formatter={ramFmt} labelStyle={{ color: '#64748b' }} />
-                    <Area type="monotone" dataKey="ram" stroke="#8b5cf6" strokeWidth={1.5} fill="url(#lhRam)" dot={false} isAnimationActive={false} connectNulls={false} />
+                    <Area type="monotone" dataKey="ram" stroke="#8b5cf6" strokeWidth={2} fill="url(#lhRam)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
+              </ChartPanel>
 
               {/* Диск */}
-              <div>
-                <div className="text-xs text-slate-500 mb-1">Диск %</div>
-                <ResponsiveContainer width="100%" height={120}>
+              <ChartPanel title="Диск" color="#f59e0b">
+                <ResponsiveContainer width="100%" height={140}>
                   <AreaChart data={histData} margin={chartMargin}>
                     <defs>
                       <linearGradient id="lhDisk" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#f59e0b" stopOpacity={0.3} />
-                        <stop offset="95%" stopColor="#f59e0b" stopOpacity={0} />
+                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4} />
+                        <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-25} textAnchor="end" dy={4} height={32} />
+                    <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
                     <YAxis {...axisProps} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={v => `${v}%`} width={36} />
                     <Tooltip contentStyle={tooltipStyle} formatter={v => [v != null ? `${v.toFixed(1)}%` : '—', 'Диск']} labelStyle={{ color: '#64748b' }} />
-                    <Area type="monotone" dataKey="disk" stroke="#f59e0b" strokeWidth={1.5} fill="url(#lhDisk)" dot={false} isAnimationActive={false} connectNulls={false} />
+                    <Area type="monotone" dataKey="disk" stroke="#f59e0b" strokeWidth={2} fill="url(#lhDisk)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
                 </ResponsiveContainer>
-              </div>
+              </ChartPanel>
 
               {/* Сеть */}
-              {(
-                <div>
-                  <div className="text-xs text-slate-500 mb-1">Сеть B/s</div>
-                  <ResponsiveContainer width="100%" height={120}>
-                    <AreaChart data={histData} margin={chartMargin}>
-                      <defs>
-                        <linearGradient id="lhRecv" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#06b6d4" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#06b6d4" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="lhSent" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.2} />
-                          <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" vertical={false} />
-                      <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-25} textAnchor="end" dy={4} height={32} />
-                      <YAxis {...axisProps} tickFormatter={v => fmtBytes(v)} width={58} />
-                      <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [v != null ? fmtBytes(v) : '—', name === 'netRecv' ? '↓' : '↑']} labelStyle={{ color: '#64748b' }} />
-                      <Area type="monotone" dataKey="netRecv" stroke="#06b6d4" strokeWidth={1.5} fill="url(#lhRecv)" dot={false} isAnimationActive={false} connectNulls={false} />
-                      <Area type="monotone" dataKey="netSent" stroke="#3b82f6" strokeWidth={1.5} fill="url(#lhSent)" dot={false} isAnimationActive={false} connectNulls={false} />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
-              )}
+              <ChartPanel title="Сеть" color="#06b6d4" badge="↓ вход  ↑ выход">
+                <ResponsiveContainer width="100%" height={140}>
+                  <AreaChart data={histData} margin={chartMargin}>
+                    <defs>
+                      <linearGradient id="lhRecv" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#06b6d4" stopOpacity={0.35} />
+                        <stop offset="100%" stopColor="#06b6d4" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="lhSent" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#6366f1" stopOpacity={0.25} />
+                        <stop offset="100%" stopColor="#6366f1" stopOpacity={0.02} />
+                      </linearGradient>
+                    </defs>
+                    <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false} />
+                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
+                    <YAxis {...axisProps} tickFormatter={v => fmtBytes(v)} width={58} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [v != null ? fmtBytes(v) : '—', name === 'netRecv' ? '↓ Вход' : '↑ Выход']} labelStyle={{ color: '#64748b' }} />
+                    <Area type="monotone" dataKey="netRecv" stroke="#06b6d4" strokeWidth={2} fill="url(#lhRecv)" dot={false} isAnimationActive={false} connectNulls={false} />
+                    <Area type="monotone" dataKey="netSent" stroke="#6366f1" strokeWidth={2} fill="url(#lhSent)" dot={false} isAnimationActive={false} connectNulls={false} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </ChartPanel>
 
             </div>
           </div>
