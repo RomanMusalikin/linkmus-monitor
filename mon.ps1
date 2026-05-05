@@ -173,9 +173,9 @@ switch ($command) {
             Write-Err "Run as Administrator: right-click terminal -> Run as Administrator"
             exit 1
         }
-        Write-Warn "Будет удалено ВСЁ: служба, бинарник, конфиг, директория $INSTALL_DIR, CLI-шим mon.cmd."
-        $ans = Read-Host "  Подтвердить удаление? [y/N]"
-        if ($ans -notmatch '^[Yy]$') { Write-Host "Отменено."; exit 0 }
+        Write-Warn "This will remove EVERYTHING: service, binary, config, $INSTALL_DIR, mon.cmd shim."
+        $ans = Read-Host "  Confirm deletion? [y/N]"
+        if ($ans -notmatch '^[Yy]$') { Write-Host "Cancelled."; exit 0 }
 
         $s = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
         if ($s) {
@@ -183,23 +183,22 @@ switch ($command) {
                 Stop-Service -Name $SERVICE_NAME -Force
                 Start-Sleep -Seconds 2
             }
-            $exe = (Get-WmiObject Win32_Service -Filter "Name='$SERVICE_NAME'" -ErrorAction SilentlyContinue)?.PathName
             sc.exe delete $SERVICE_NAME | Out-Null
-            Write-Ok "Служба $SERVICE_NAME удалена"
+            Write-Ok "Service $SERVICE_NAME removed"
         }
 
         if (Test-Path $INSTALL_DIR) {
             Remove-Item -Recurse -Force $INSTALL_DIR
-            Write-Ok "Директория $INSTALL_DIR удалена"
+            Write-Ok "Directory $INSTALL_DIR removed"
         }
 
         $shimPath = "$env:SystemRoot\System32\mon.cmd"
         if (Test-Path $shimPath) {
             Remove-Item -Force $shimPath
-            Write-Ok "CLI-шим mon.cmd удалён"
+            Write-Ok "CLI shim mon.cmd removed"
         }
 
-        Write-Ok "Агент полностью деинсталирован."
+        Write-Ok "Agent fully uninstalled."
     }
     "help" {
         Show-Usage
