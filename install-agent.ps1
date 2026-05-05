@@ -39,7 +39,10 @@ $useLocal = Test-Path $localExe
 
 if ($useLocal) {
     Write-Ok "Found mon-agent.exe next to script - working offline."
-    $latestTag = if (Test-Path $VERSION_FILE) { (Get-Content $VERSION_FILE -Raw).Trim() } else { "local" }
+    $archiveVersion = Join-Path $SCRIPT_DIR ".version"
+    $latestTag = if (Test-Path $archiveVersion) { (Get-Content $archiveVersion -Raw).Trim() } `
+                 elseif (Test-Path $VERSION_FILE) { (Get-Content $VERSION_FILE -Raw).Trim() } `
+                 else { "local" }
 } else {
     Write-Step "mon-agent.exe not found locally - trying GitHub..."
     try {

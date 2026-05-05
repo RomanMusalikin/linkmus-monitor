@@ -64,8 +64,9 @@ jobs:
         run: |
           cp install-agent.ps1 dist/install-agent.ps1
           cp mon.ps1 dist/mon.ps1
+          echo "${{ github.ref_name }}" > dist/.version
           cd dist
-          zip mon-agent-windows-amd64.zip mon-agent.exe install-agent.ps1 mon.ps1
+          zip mon-agent-windows-amd64.zip mon-agent.exe install-agent.ps1 mon.ps1 .version
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
