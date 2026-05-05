@@ -24,6 +24,13 @@ body {
   @apply bg-slate-600;
 }
 
+/* Убираем outline у SVG-графиков при клике */
+.recharts-wrapper,
+.recharts-wrapper svg,
+.recharts-surface {
+  outline: none !important;
+}
+
 /* ── Lamp / Login animations ───────────────────────────── */
 
 /* Покачивание шнурка при нажатии */
