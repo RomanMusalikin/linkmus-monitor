@@ -112,7 +112,7 @@ export default function Settings() {
                 <Input type="text" value={s.smtpHost} onChange={upd('smtpHost')} placeholder="smtp.gmail.com" />
               </Field>
             </div>
-            <Field label="Порт" hint="587 — STARTTLS, 465 — SSL">
+            <Field label="Порт" hint="587 — STARTTLS (рекомендуется), 465 — SSL/TLS">
               <Input type="number" value={s.smtpPort} onChange={updNum('smtpPort')} placeholder="587" min={1} max={65535} />
             </Field>
           </div>

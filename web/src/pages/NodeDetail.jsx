@@ -740,7 +740,7 @@ export default function NodeDetail() {
                       <span className="text-red-400 tabular-nums font-medium">{(node.cpuSteal).toFixed(1)}%</span>
                     </div>
                   )}
-                  {!isWindows && (node.loadAvg1 || 0) > 0 && (
+                  {!isWindows && (
                     <div className="pt-1 border-t border-slate-700/30">
                       <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-1">Load Avg</div>
                       <div className="flex gap-2 text-xs tabular-nums">
@@ -765,7 +765,6 @@ export default function NodeDetail() {
                   <div className="w-full h-2.5 rounded-full overflow-hidden flex mb-2">
                     {node.cpuUser > 0 && <div className="h-full bg-blue-500" style={{ width: `${node.cpuUser}%` }} />}
                     {node.cpuSystem > 0 && <div className="h-full bg-violet-500" style={{ width: `${node.cpuSystem}%` }} />}
-                    {(node.cpuIowait || 0) > 0 && <div className="h-full bg-amber-500" style={{ width: `${node.cpuIowait}%` }} />}
                     {(node.cpuSteal || 0) > 0 && <div className="h-full bg-red-500" style={{ width: `${node.cpuSteal}%` }} />}
                     <div className="h-full bg-slate-700/40 flex-1" />
                   </div>
@@ -773,7 +772,6 @@ export default function NodeDetail() {
                     {[
                       { label: 'User', value: node.cpuUser, color: 'bg-blue-500' },
                       { label: 'System', value: node.cpuSystem, color: 'bg-violet-500' },
-                      { label: 'I/O Wait', value: node.cpuIowait, color: 'bg-amber-500' },
                       { label: 'Steal', value: node.cpuSteal, color: 'bg-red-500' },
                     ].filter(s => (s.value || 0) > 0).map(s => (
                       <div key={s.label} className="flex items-center justify-between text-xs text-slate-500">
