@@ -29,6 +29,7 @@ function Show-Usage {
     Write-Host "  disable  " -NoNewline -ForegroundColor White; Write-Host "Disable autostart on boot"
     Write-Host "  logs     " -NoNewline -ForegroundColor White; Write-Host "Follow live log output"
     Write-Host "  update   " -NoNewline -ForegroundColor White; Write-Host "Check for updates and install if available"
+    Write-Host "  delete   " -NoNewline -ForegroundColor White; Write-Host "Fully uninstall the agent (service, files, CLI shim)"
     Write-Host ""
 }
 
@@ -158,6 +159,39 @@ switch ($command) {
     }
     "update" {
         Do-Update
+    }
+    "delete" {
+        if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+            Write-Err "Run as Administrator: right-click terminal -> Run as Administrator"
+            exit 1
+        }
+        Write-Warn "Будет удалено ВСЁ: служба, бинарник, конфиг, директория $INSTALL_DIR, CLI-шим mon.cmd."
+        $ans = Read-Host "  Подтвердить удаление? [y/N]"
+        if ($ans -notmatch '^[Yy]$') { Write-Host "Отменено."; exit 0 }
+
+        $s = Get-Service -Name $SERVICE_NAME -ErrorAction SilentlyContinue
+        if ($s) {
+            if ($s.Status -eq 'Running') {
+                Stop-Service -Name $SERVICE_NAME -Force
+                Start-Sleep -Seconds 2
+            }
+            $exe = (Get-WmiObject Win32_Service -Filter "Name='$SERVICE_NAME'" -ErrorAction SilentlyContinue)?.PathName
+            sc.exe delete $SERVICE_NAME | Out-Null
+            Write-Ok "Служба $SERVICE_NAME удалена"
+        }
+
+        if (Test-Path $INSTALL_DIR) {
+            Remove-Item -Recurse -Force $INSTALL_DIR
+            Write-Ok "Директория $INSTALL_DIR удалена"
+        }
+
+        $shimPath = "$env:SystemRoot\System32\mon.cmd"
+        if (Test-Path $shimPath) {
+            Remove-Item -Force $shimPath
+            Write-Ok "CLI-шим mon.cmd удалён"
+        }
+
+        Write-Ok "Агент полностью деинсталирован."
     }
     "help" {
         Show-Usage

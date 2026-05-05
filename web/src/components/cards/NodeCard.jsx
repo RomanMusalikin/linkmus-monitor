@@ -141,7 +141,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
       onClick={e => {
         if (dragState.happened) { e.preventDefault(); }
       }}
-      className={`group backdrop-blur-sm rounded-2xl border transition-all duration-200 block relative overflow-hidden
+      className={`group backdrop-blur-sm rounded-2xl border transition-all duration-200 block relative overflow-hidden h-full
         ${node.online
           ? 'bg-slate-800/80 border-slate-700/50 hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5'
           : 'bg-slate-900/60 border-red-900/40 hover:border-red-700/40'}`}

@@ -36,7 +36,7 @@ function SortableCard({ node, onDeleted, serverVersion }) {
     zIndex: isDragging ? 50 : undefined,
   };
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} style={style} className="h-full">
       <NodeCard node={node} onDeleted={onDeleted} isDragging={isDragging} dragHandleProps={{ ...attributes, ...listeners }} serverVersion={serverVersion} />
     </div>
   );

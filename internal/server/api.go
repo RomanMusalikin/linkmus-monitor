@@ -259,6 +259,8 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"delete failed"}`, http.StatusInternalServerError)
 		return
 	}
+	dbConn.Exec(`DELETE FROM metrics_hourly WHERE node_name = ?`, name)
+	dbConn.Exec(`DELETE FROM node_aliases WHERE node_name = ?`, name)
 	w.WriteHeader(http.StatusOK)
 }
 

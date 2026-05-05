@@ -231,6 +231,7 @@ export default function NodeDetail() {
   const [exportOpen, setExportOpen] = useState(false);
   const exportCloseTimer = useRef(null);
   const [liveBuffer, setLiveBuffer] = useState([]);
+  const liveBufferSeeded = useRef(false);
 
   // Авто-загрузка 24ч при открытии страницы
   useEffect(() => {
@@ -239,6 +240,19 @@ export default function NodeDetail() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [nodeId]);
+
+  // Засеваем liveBuffer историческими данными при первой загрузке
+  useEffect(() => {
+    if (liveBufferSeeded.current) return;
+    const n = nodes?.find(nd => nd.name === nodeId);
+    if (!n?.cpuHistory?.length) return;
+    liveBufferSeeded.current = true;
+    setLiveBuffer(
+      n.cpuHistory
+        .filter(p => p.value != null)
+        .map(p => ({ value: p.value, time: p.time }))
+    );
+  }, [nodes, nodeId]);
 
   // Накапливаем живые точки с каждым polling-обновлением (каждые 10с)
   const currentCpu = nodes?.find(n => n.name === nodeId)?.cpu;
