@@ -87,6 +87,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
   const [deleting, setDeleting] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [localDisplayName, setLocalDisplayName] = useState(null);
   const renameInputRef = useRef(null);
 
   async function handleDelete(e) {
@@ -123,6 +124,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
     const alias = renameValue.trim();
     try {
       await renameNode(node.name, alias === node.name ? '' : alias);
+      setLocalDisplayName(alias === node.name ? '' : alias);
     } catch { /* ignore */ }
     setRenaming(false);
   }
@@ -188,7 +190,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
               ) : (
                 <div className="flex items-center gap-1 group/name">
                   <div className="font-semibold text-slate-100 text-sm leading-tight truncate max-w-[130px]">
-                    {node.displayName || node.name}
+                    {localDisplayName !== null ? (localDisplayName || node.name) : (node.displayName || node.name)}
                   </div>
                   <button
                     onClick={handleStartRename}

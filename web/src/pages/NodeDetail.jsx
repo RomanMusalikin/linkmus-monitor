@@ -225,6 +225,7 @@ export default function NodeDetail() {
   const [deleting, setDeleting] = useState(false);
   const [renaming, setRenaming] = useState(false);
   const [renameValue, setRenameValue] = useState('');
+  const [localDisplayName, setLocalDisplayName] = useState(null);
   const renameInputRef = useRef(null);
   const [fullHistory, setFullHistory] = useState(null);
   const [loadingFull, setLoadingFull] = useState(false);
@@ -361,7 +362,10 @@ export default function NodeDetail() {
     return <div className="p-6 text-red-400">Ошибка: {error}</div>;
   }
 
-  const node = nodes?.find(n => n.name === nodeId);
+  const rawNode = nodes?.find(n => n.name === nodeId);
+  const node = rawNode && localDisplayName !== null
+    ? { ...rawNode, displayName: localDisplayName || rawNode.name }
+    : rawNode;
   if (!node) {
     return (
       <div className="p-6 text-slate-400">
@@ -403,6 +407,7 @@ export default function NodeDetail() {
                       if (e.key === 'Enter') {
                         const alias = renameValue.trim();
                         await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
+                        setLocalDisplayName(alias === node.name ? '' : alias);
                         setRenaming(false);
                       }
                       if (e.key === 'Escape') setRenaming(false);
@@ -413,6 +418,7 @@ export default function NodeDetail() {
                   <button onClick={async () => {
                     const alias = renameValue.trim();
                     await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
+                    setLocalDisplayName(alias === node.name ? '' : alias);
                     setRenaming(false);
                   }} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
                   <button onClick={() => setRenaming(false)} className="text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>
