@@ -361,6 +361,38 @@ do_delete() {
   fi
 }
 
+do_delete() {
+  local target="$1"
+  [ "$(id -u)" -eq 0 ] || { echo -e "${RED}[ERR]${RESET}  Нужны права root: sudo mon $target delete"; exit 1; }
+  if [ "$target" = "server" ]; then
+    echo -e "${YELLOW}[WARN]${RESET} Будет удалено ВСЁ: бинарник, фронтенд, база данных, конфиг nginx."
+    read -rp "  Подтвердить удаление? [y/N]: " ans </dev/tty
+    [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
+    systemctl stop    mon-server 2>/dev/null || true
+    systemctl disable mon-server 2>/dev/null || true
+    rm -f /etc/systemd/system/mon-server.service
+    systemctl daemon-reload
+    rm -f "$SERVER_BIN"
+    rm -rf "$SERVER_DIR"
+    rm -f /etc/nginx/sites-enabled/linkmus-monitor
+    rm -f /etc/nginx/sites-available/linkmus-monitor
+    command -v nginx &>/dev/null && nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+    [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
+    echo -e "${GREEN}[ OK ]${RESET} Сервер полностью удалён."
+  else
+    echo -e "${YELLOW}[WARN]${RESET} Будет удалено ВСЁ: бинарник, конфиг, директория агента."
+    read -rp "  Подтвердить удаление? [y/N]: " ans </dev/tty
+    [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
+    systemctl stop    mon-agent 2>/dev/null || true
+    systemctl disable mon-agent 2>/dev/null || true
+    rm -f /etc/systemd/system/mon-agent.service
+    systemctl daemon-reload
+    rm -rf "$AGENT_DIR"
+    [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
+    echo -e "${GREEN}[ OK ]${RESET} Агент полностью удалён."
+  fi
+}
+
 [ $# -lt 2 ] && usage
 case "$1" in
   server) SVC="mon-server" ;;
