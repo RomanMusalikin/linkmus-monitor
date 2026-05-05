@@ -1,9 +1,9 @@
 import { ResponsiveContainer, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend } from 'recharts';
 
-export default function NetworkLines({ data }) {
+export default function NetworkLines({ data, className = 'h-52' }) {
   if (!data || data.length === 0) {
     return (
-      <div className="h-48 flex items-center justify-center text-slate-500 text-sm">
+      <div className={`${className} flex items-center justify-center text-slate-500 text-sm`}>
         Нет данных о трафике
       </div>
     );
@@ -13,7 +13,7 @@ export default function NetworkLines({ data }) {
   const fmt = data.length > 36 ? (t) => t.slice(0, 5) : undefined;
 
   return (
-    <div className="h-52 w-full">
+    <div className={`${className} w-full`}>
       <ResponsiveContainer width="100%" height="100%">
         <AreaChart data={data} margin={{ top: 5, right: 8, left: -10, bottom: 28 }}>
           <defs>

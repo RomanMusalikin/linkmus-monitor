@@ -1010,10 +1010,8 @@ export default function NodeDetail() {
               </div>
             )}
 
-            {/* График прижат к низу */}
-            <div className="mt-auto">
-              <NetworkLines data={node.netHistory || []} />
-            </div>
+            {/* График растягивается на оставшееся место */}
+            <NetworkLines data={node.netHistory || []} className="flex-1 min-h-[160px]" />
           </div>
         </Card>
 
