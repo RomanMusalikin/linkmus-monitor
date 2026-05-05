@@ -345,7 +345,7 @@ do_delete() {
     rm -f /etc/nginx/sites-enabled/linkmus-monitor
     rm -f /etc/nginx/sites-available/linkmus-monitor
     command -v nginx &>/dev/null && nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
-    [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon
+    [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
     echo -e "${GREEN}[ OK ]${RESET} Сервер полностью удалён."
   else
     echo -e "${YELLOW}[WARN]${RESET} Будет удалено ВСЁ: бинарник, конфиг, директория агента."
@@ -356,7 +356,7 @@ do_delete() {
     rm -f /etc/systemd/system/mon-agent.service
     systemctl daemon-reload
     rm -rf "$AGENT_DIR"
-    [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon
+    [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
     echo -e "${GREEN}[ OK ]${RESET} Агент полностью удалён."
   fi
 }
@@ -382,7 +382,8 @@ case "$2" in
 esac
 MONEOF
   chmod +x /usr/local/bin/mon
-  ok "CLI: mon server|agent start|stop|restart|status|enable|disable|logs|update"
+  ln -sf /usr/local/bin/mon /usr/bin/mon
+  ok "CLI: mon server|agent start|stop|restart|status|enable|disable|logs|update|delete"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
