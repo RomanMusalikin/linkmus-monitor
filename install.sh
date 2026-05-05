@@ -290,6 +290,8 @@ do_update() {
     rm -rf "$tmp"
     systemctl start mon-server
     echo -e "${GREEN}[ OK ]${RESET} Сервер обновлён до ${BOLD}$latest_tag${RESET}"
+    curl -fsSL "https://raw.githubusercontent.com/$REPO/main/install.sh" | bash -s -- --update-cli 2>/dev/null && \
+      echo -e "${GREEN}[ OK ]${RESET} CLI mon обновлён" || true
 
   else
     local current=""
@@ -322,6 +324,8 @@ do_update() {
     rm -rf "$tmp"
     systemctl start mon-agent
     echo -e "${GREEN}[ OK ]${RESET} Агент обновлён до ${BOLD}$latest_tag${RESET}"
+    curl -fsSL "https://raw.githubusercontent.com/$REPO/main/install.sh" | bash -s -- --update-cli 2>/dev/null && \
+      echo -e "${GREEN}[ OK ]${RESET} CLI mon обновлён" || true
   fi
 }
 
@@ -421,6 +425,13 @@ uninstall_agent() {
 
   ok "Агент полностью удалён."
 }
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Режим --update-cli: только обновить /usr/local/bin/mon (вызывается из do_update)
+if [ "${1:-}" = "--update-cli" ]; then
+  install_mon_cli
+  exit 0
+fi
 
 # ──────────────────────────────────────────────────────────────────────────────
 echo ""
