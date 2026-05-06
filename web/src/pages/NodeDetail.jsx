@@ -618,7 +618,7 @@ export default function NodeDetail() {
               </ChartPanel>
 
               {/* RAM */}
-              <ChartPanel title="Память" color="#8b5cf6">
+              <ChartPanel title="ОЗУ" color="#8b5cf6">
                 <ResponsiveContainer width="100%" height={140}>
                   <AreaChart data={histData} margin={chartMargin}>
                     <defs>
