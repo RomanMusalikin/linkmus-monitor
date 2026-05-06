@@ -237,6 +237,19 @@ export default function NodeDetail() {
   const [liveBuffer, setLiveBuffer] = useState([]);
   const liveBufferSeeded = useRef(false);
 
+  // Сбрасываем весь локальный стейт при смене узла
+  useEffect(() => {
+    setLiveBuffer([]);
+    liveBufferSeeded.current = false;
+    setFullHistory(null);
+    setLongHistory(null);
+    setHistoryRange('live');
+    setLocalDisplayName(null);
+    setConfirmDelete(false);
+    setRenaming(false);
+    setExportOpen(false);
+  }, [nodeId]);
+
   // Засеваем liveBuffer историческими данными при первой загрузке
   useEffect(() => {
     if (liveBufferSeeded.current) return;
