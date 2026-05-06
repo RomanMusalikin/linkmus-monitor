@@ -882,7 +882,7 @@ export default function NodeDetail() {
             )}
 
             {/* RAM history — только в режиме Сейчас, иначе показывается в верхней панели */}
-            {historyRange === 'live' && node.ramHistory && node.ramHistory.length > 1 && (
+            {node.ramHistory && node.ramHistory.length > 1 && (
               <div className="pt-2 border-t border-slate-700/40">
                 <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">История RAM</div>
                 <ResponsiveContainer width="100%" height={60}>
@@ -971,8 +971,7 @@ export default function NodeDetail() {
               </div>
             )}
 
-            {/* Disk history — только в режиме Сейчас */}
-            {historyRange === 'live' && (node.diskHistory || []).length > 1 && (
+            {(node.diskHistory || []).length > 1 && (
               <div className="pt-3 border-t border-slate-700/40">
                 <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Заполнение диска</div>
                 <ResponsiveContainer width="100%" height={60}>
