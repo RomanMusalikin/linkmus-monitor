@@ -584,9 +584,6 @@ export default function NodeDetail() {
               }
             : v => [v != null ? `${v.toFixed(2)} GB` : '—', 'RAM'];
 
-        if (histData.length === 0) return null;
-        );
-
         const xInterval = Math.max(0, Math.floor(histData.length / 6) - 1);
         const tooltipStyle = {
           background: '#0f172a', border: '1px solid #334155',
