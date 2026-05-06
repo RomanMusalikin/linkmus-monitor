@@ -58,8 +58,13 @@ export default function Settings() {
   function upd(field) {
     return e => setS(prev => ({ ...prev, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
   }
-  function updNum(field) {
-    return e => setS(prev => ({ ...prev, [field]: Number(e.target.value) || 0 }));
+  function updNum(field, min = 0, max = Infinity) {
+    return e => {
+      const raw = e.target.value.replace(/[^0-9]/g, '');
+      if (raw === '') { setS(prev => ({ ...prev, [field]: '' })); return; }
+      const n = Math.min(max, Math.max(min, parseInt(raw, 10)));
+      setS(prev => ({ ...prev, [field]: n }));
+    };
   }
 
   async function handleSave(e) {
@@ -112,7 +117,7 @@ export default function Settings() {
                 <Input type="text" value={s.smtpHost} onChange={upd('smtpHost')} placeholder="smtp.gmail.com" />
               </Field>
             </div>
-            <Field label="Порт" hint="587 — STARTTLS (рекомендуется), 465 — SSL/TLS">
+            <Field label="Порт">
               <Input type="number" value={s.smtpPort} onChange={updNum('smtpPort')} placeholder="587" min={1} max={65535} />
             </Field>
           </div>
@@ -163,16 +168,16 @@ export default function Settings() {
             <Field label="CPU — порог (%)" hint="0 = не отслеживать. При достижении — письмо.">
               <div className="relative">
                 <Cpu className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-                <Input type="number" value={s.cpuThreshold} onChange={updNum('cpuThreshold')}
-                  min={0} max={100} placeholder="85" className="pl-8 w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
+                <Input type="text" inputMode="numeric" value={s.cpuThreshold} onChange={updNum('cpuThreshold', 0, 100)}
+                  placeholder="85" className="pl-8 w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
                   focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-all" />
               </div>
             </Field>
             <Field label="RAM — порог (%)" hint="0 = не отслеживать.">
               <div className="relative">
                 <MemoryStick className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
-                <Input type="number" value={s.ramThreshold} onChange={updNum('ramThreshold')}
-                  min={0} max={100} placeholder="90" className="pl-8 w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
+                <Input type="text" inputMode="numeric" value={s.ramThreshold} onChange={updNum('ramThreshold', 0, 100)}
+                  placeholder="90" className="pl-8 w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
                   focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-all" />
               </div>
             </Field>
@@ -180,7 +185,7 @@ export default function Settings() {
 
           <div className="mt-4 max-w-xs">
             <Field label="Кулдаун (минуты)" hint="Минимальный интервал между повторными письмами по одному узлу.">
-              <Input type="number" value={s.cooldownMin} onChange={updNum('cooldownMin')} min={1} max={1440} placeholder="30" />
+              <Input type="text" inputMode="numeric" value={s.cooldownMin} onChange={updNum('cooldownMin', 1, 1440)} placeholder="30" />
             </Field>
           </div>
         </Section>
