@@ -108,6 +108,45 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rangeParam := r.URL.Query().Get("range")
+
+	// Режим 1h — сырые метрики из таблицы metrics, агрегация по минутам
+	if rangeParam == "1h" {
+		since := time.Now().UTC().Add(-time.Hour)
+		rows, err := dbConn.Query(`
+			SELECT
+				strftime('%H:%M', timestamp) AS minute,
+				AVG(cpu_usage),
+				AVG(ram_usage),
+				AVG(ram_total),
+				AVG(disk_usage),
+				AVG(COALESCE(net_bytes_recv, 0)),
+				AVG(COALESCE(net_bytes_sent, 0))
+			FROM metrics
+			WHERE node_name = ? AND timestamp >= ?
+			GROUP BY strftime('%Y-%m-%dT%H:%M', timestamp) || CASE WHEN CAST(strftime('%S', timestamp) AS INTEGER) < 30 THEN ':00' ELSE ':30' END
+			ORDER BY minute ASC
+		`, name, since.Format(time.RFC3339))
+		if err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		var points []HourlyPoint
+		for rows.Next() {
+			var label string
+			var cpu, ram, ramTotal, disk, recv, sent float64
+			if err := rows.Scan(&label, &cpu, &ram, &ramTotal, &disk, &recv, &sent); err == nil {
+				c, ra, rt, d, rc, s := cpu, ram, ramTotal, disk, recv, sent
+				points = append(points, HourlyPoint{Time: label, CPU: &c, RAM: &ra, RAMTotal: &rt, Disk: &d, NetRecv: &rc, NetSent: &s})
+			}
+		}
+		if points == nil {
+			points = []HourlyPoint{}
+		}
+		json.NewEncoder(w).Encode(points)
+		return
+	}
+
 	var days int
 	switch rangeParam {
 	case "14d":

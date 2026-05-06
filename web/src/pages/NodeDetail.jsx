@@ -491,6 +491,7 @@ export default function NodeDetail() {
           <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden text-sm">
             {[
               { key: 'live', label: 'Сейчас' },
+              { key: '1h',   label: '1ч' },
               { key: '24h',  label: '24ч' },
               { key: '7d',   label: '7д' },
               { key: '14d',  label: '14д' },
@@ -570,10 +571,18 @@ export default function NodeDetail() {
 
         if (!histData) return null;
 
-        const rangeLabel = { '24h': '24 часа', '7d': '7 дней', '14d': '14 дней', '30d': '30 дней' }[historyRange] || '';
-        const pointLabel = src24 ? 'интервал 10 мин.' : 'интервал 1 час';
+        const rangeLabel = { '1h': '1 час', '24h': '24 часа', '7d': '7 дней', '14d': '14 дней', '30d': '30 дней' }[historyRange] || '';
+        const pointLabel = historyRange === '1h' ? 'интервал 30 сек.' : src24 ? 'интервал 10 мин.' : 'интервал 1 час';
         const ramLabel = src24 ? 'RAM %' : 'RAM GB';
-        const ramFmt = src24 ? v => [v != null ? `${v.toFixed(1)}%` : '—', 'RAM'] : v => [v != null ? `${v.toFixed(2)} GB` : '—', 'RAM'];
+        const ramFmt = src24
+          ? v => [v != null ? `${v.toFixed(1)}%` : '—', 'RAM']
+          : historyRange === '1h'
+            ? (v, _name, entry) => {
+                if (v == null) return ['—', 'RAM'];
+                const pct = entry?.ramTotal > 0 ? (v / entry.ramTotal * 100).toFixed(1) + '%' : '';
+                return [`${v.toFixed(2)} GB${pct ? ` (${pct})` : ''}`, 'RAM'];
+              }
+            : v => [v != null ? `${v.toFixed(2)} GB` : '—', 'RAM'];
 
         if (histData.length === 0) return (
           <div className="mb-6 bg-slate-800/40 rounded-2xl border border-slate-700/30 p-5 text-center text-slate-500 text-sm">
