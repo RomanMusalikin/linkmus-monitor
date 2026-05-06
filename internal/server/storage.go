@@ -463,7 +463,7 @@ func formatHistoryTime(ts string) string {
 	return ts
 }
 
-const dayBucketDur = 10 * time.Minute
+const dayBucketDur = 5 * time.Minute
 
 func queryCPUHistory(db *sql.DB, name string, full bool) []CpuPoint {
 	if !full {

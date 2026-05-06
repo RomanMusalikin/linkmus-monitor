@@ -574,7 +574,7 @@ export default function NodeDetail() {
         if (!histData) return null;
 
         const rangeLabel = { '1h': '1 час', '24h': '24 часа', '7d': '7 дней', '14d': '14 дней', '30d': '30 дней' }[historyRange] || '';
-        const pointLabel = historyRange === '1h' ? 'интервал 30 сек.' : src24 ? 'интервал 10 мин.' : 'интервал 1 час';
+        const pointLabel = historyRange === '1h' ? 'интервал 30 сек.' : src24 ? 'интервал 5 мин.' : 'интервал 1 час';
         const ramLabel = src24 ? 'RAM %' : 'RAM GB';
         const ramFmt = src24
           ? v => [v != null ? `${v.toFixed(1)}%` : '—', 'RAM']
