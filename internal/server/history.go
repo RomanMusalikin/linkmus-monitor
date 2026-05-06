@@ -114,7 +114,7 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 		since := time.Now().UTC().Add(-time.Hour)
 		rows, err := dbConn.Query(`
 			SELECT
-				strftime('%H:%M', timestamp) AS minute,
+				strftime('%H:%M', timestamp) || CASE WHEN CAST(strftime('%S', timestamp) AS INTEGER) < 30 THEN ':00' ELSE ':30' END AS minute,
 				AVG(cpu_usage),
 				AVG(ram_usage),
 				AVG(ram_total),

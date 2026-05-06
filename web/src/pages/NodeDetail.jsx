@@ -584,10 +584,7 @@ export default function NodeDetail() {
               }
             : v => [v != null ? `${v.toFixed(2)} GB` : '—', 'RAM'];
 
-        if (histData.length === 0) return (
-          <div className="mb-6 bg-slate-800/40 rounded-2xl border border-slate-700/30 p-5 text-center text-slate-500 text-sm">
-            Нет данных за выбранный период. История накапливается — данные появятся после первого часа работы сервера.
-          </div>
+        if (histData.length === 0) return null;
         );
 
         const xInterval = Math.max(0, Math.floor(histData.length / 6) - 1);
