@@ -566,6 +566,8 @@ export default function NodeDetail() {
               disk: fullHistory.diskHistory?.[i]?.value ?? null,
               netRecv: fullHistory.netHistory?.[i]?.recv ?? null,
               netSent: fullHistory.netHistory?.[i]?.sent ?? null,
+              diskRead: fullHistory.diskIOHistory?.[i]?.read ?? null,
+              diskWrite: fullHistory.diskIOHistory?.[i]?.write ?? null,
             }))
           : longHistory;
 
@@ -654,21 +656,26 @@ export default function NodeDetail() {
                 </ResponsiveContainer>
               </ChartPanel>
 
-              {/* Диск */}
-              <ChartPanel title="Диск" color="#f59e0b">
+              {/* Диск I/O */}
+              <ChartPanel title="Диск I/O" color="#f59e0b" badge="↓ чтение  ↑ запись">
                 <ResponsiveContainer width="100%" height={140}>
                   <AreaChart data={histData} margin={chartMargin}>
                     <defs>
-                      <linearGradient id="lhDisk" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.4} />
+                      <linearGradient id="lhDiskRead" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#f59e0b" stopOpacity={0.35} />
                         <stop offset="100%" stopColor="#f59e0b" stopOpacity={0.02} />
+                      </linearGradient>
+                      <linearGradient id="lhDiskWrite" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#fb923c" stopOpacity={0.25} />
+                        <stop offset="100%" stopColor="#fb923c" stopOpacity={0.02} />
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false} />
                     <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
-                    <YAxis {...axisProps} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={v => `${v}%`} width={36} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={v => [v != null ? `${v.toFixed(1)}%` : '—', 'Диск']} labelStyle={{ color: '#64748b' }} />
-                    <Area type="monotone" dataKey="disk" stroke="#f59e0b" strokeWidth={2} fill="url(#lhDisk)" dot={false} isAnimationActive={false} connectNulls={false} />
+                    <YAxis {...axisProps} tickFormatter={v => fmtBytes(v)} width={58} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [v != null ? fmtBytes(v) : '—', name === 'diskRead' ? '↓ Чтение' : '↑ Запись']} labelStyle={{ color: '#64748b' }} />
+                    <Area type="monotone" dataKey="diskRead" stroke="#f59e0b" strokeWidth={2} fill="url(#lhDiskRead)" dot={false} isAnimationActive={false} connectNulls={false} />
+                    <Area type="monotone" dataKey="diskWrite" stroke="#fb923c" strokeWidth={2} fill="url(#lhDiskWrite)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </ChartPanel>

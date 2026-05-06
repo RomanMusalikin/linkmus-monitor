@@ -163,6 +163,15 @@ func MigrateDB(db *sql.DB) {
 		enabled        INTEGER DEFAULT 0
 	)`)
 
+	// Миграции: добавляем новые колонки если их ещё нет
+	migrations := []string{
+		`ALTER TABLE metrics_hourly ADD COLUMN avg_disk_read  REAL DEFAULT 0`,
+		`ALTER TABLE metrics_hourly ADD COLUMN avg_disk_write REAL DEFAULT 0`,
+	}
+	for _, stmt := range migrations {
+		db.Exec(stmt) // игнорируем ошибку — колонка уже существует
+	}
+
 	// Индексы: критически важны для производительности при большом числе узлов
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_metrics_node_ts ON metrics(node_name, timestamp)`,
@@ -439,7 +448,8 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			CPUHistory:  queryCPUHistory(db, r.name, full),
 			RAMHistory:  queryRAMHistory(db, r.name, full),
 			NetHistory:  queryNetHistory(db, r.name, full),
-			DiskHistory: queryDiskHistory(db, r.name, full),
+			DiskHistory:   queryDiskHistory(db, r.name, full),
+			DiskIOHistory: queryDiskIOHistory(db, r.name, full),
 		})
 	}
 
@@ -788,6 +798,88 @@ func queryDiskHistory(db *sql.DB, name string, full bool) []DiskPoint {
 			result = append(result, DiskPoint{Value: &avg, Time: label})
 		} else {
 			result = append(result, DiskPoint{Value: nil, Time: label})
+		}
+	}
+	return result
+}
+
+func queryDiskIOHistory(db *sql.DB, name string, full bool) []DiskIOPoint {
+	if !full {
+		rows, err := db.Query(`
+			SELECT COALESCE(disk_read_sec,0), COALESCE(disk_write_sec,0), timestamp
+			FROM metrics WHERE node_name = ? ORDER BY timestamp DESC LIMIT 20`, name)
+		if err != nil {
+			return nil
+		}
+		defer rows.Close()
+		var temp []DiskIOPoint
+		for rows.Next() {
+			var r, w float64
+			var ts string
+			if err := rows.Scan(&r, &w, &ts); err == nil {
+				rd, wr := r, w
+				temp = append(temp, DiskIOPoint{Read: &rd, Write: &wr, Time: formatHistoryTime(ts)})
+			}
+		}
+		result := make([]DiskIOPoint, len(temp))
+		for i, v := range temp {
+			result[len(temp)-1-i] = v
+		}
+		return result
+	}
+
+	rows, err := db.Query(`
+		SELECT COALESCE(disk_read_sec,0), COALESCE(disk_write_sec,0), timestamp
+		FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	type rec struct {
+		r, w float64
+		t    time.Time
+	}
+	var all []rec
+	for rows.Next() {
+		var r, w float64
+		var ts string
+		if err := rows.Scan(&r, &w, &ts); err == nil {
+			if t, err := time.Parse(time.RFC3339, ts); err == nil {
+				all = append(all, rec{r, w, t})
+			}
+		}
+	}
+	if len(all) == 0 {
+		return nil
+	}
+
+	now := time.Now().Local()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+	type bucket struct{ sumR, sumW float64; n int }
+	grid := make(map[time.Time]*bucket)
+	for _, rec := range all {
+		key := rec.t.Local().Truncate(dayBucketDur)
+		if key.Before(start) {
+			continue
+		}
+		if grid[key] == nil {
+			grid[key] = &bucket{}
+		}
+		grid[key].sumR += rec.r
+		grid[key].sumW += rec.w
+		grid[key].n++
+	}
+
+	var result []DiskIOPoint
+	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
+		label := t.Format("15:04")
+		if b := grid[t]; b != nil {
+			n := float64(b.n)
+			r, w := b.sumR/n, b.sumW/n
+			result = append(result, DiskIOPoint{Read: &r, Write: &w, Time: label})
+		} else {
+			result = append(result, DiskIOPoint{Read: nil, Write: nil, Time: label})
 		}
 	}
 	return result

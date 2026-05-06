@@ -35,6 +35,13 @@ type DiskPoint struct {
 	Time  string `json:"time"`
 }
 
+// DiskIOPoint — одна точка истории дискового I/O
+type DiskIOPoint struct {
+	Read  *float64 `json:"read"`
+	Write *float64 `json:"write"`
+	Time  string   `json:"time"`
+}
+
 // ProcessInfo — информация об одном процессе
 type ProcessInfo struct {
 	PID  int32   `json:"pid"`
@@ -172,7 +179,8 @@ type NodeSummary struct {
 	CPUHistory  []CpuPoint  `json:"cpuHistory"`
 	RAMHistory  []RamPoint  `json:"ramHistory"`
 	NetHistory  []NetPoint  `json:"netHistory"`
-	DiskHistory []DiskPoint `json:"diskHistory"`
+	DiskHistory   []DiskPoint   `json:"diskHistory"`
+	DiskIOHistory []DiskIOPoint `json:"diskIOHistory"`
 }
 
 // nodesCache — кэш результата GetLatestNodes(full=false).
