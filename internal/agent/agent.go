@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"net/url"
 	"os"
 	"strings"
 	"time"
@@ -117,7 +118,7 @@ func Run() {
 func collectAndSend(t time.Time, serverURL string) {
 	hostname, _ := os.Hostname()
 	hostname = strings.TrimSuffix(hostname, ".localdomain")
-	outboundIP := getOutboundIP()
+	outboundIP := getOutboundIP(serverURL)
 
 	// Системная информация
 	h, _ := host.Info()
@@ -259,11 +260,24 @@ func rotateLog(path string) {
 	os.Rename(path, path+".old")
 }
 
-// getOutboundIP определяет IP-адрес, с которого идёт трафик к внешним хостам
-func getOutboundIP() string {
-	conn, err := net.Dial("udp", "8.8.8.8:80")
+// getOutboundIP определяет IP-адрес, с которого агент достигает сервера мониторинга.
+func getOutboundIP(serverURL string) string {
+	// Извлекаем host:port из URL сервера для UDP-dial
+	target := "8.8.8.8:80"
+	if serverURL != "" {
+		u, err := url.Parse(serverURL)
+		if err == nil && u.Host != "" {
+			host := u.Hostname()
+			target = host + ":80"
+		}
+	}
+	conn, err := net.Dial("udp", target)
 	if err != nil {
-		return "127.0.0.1"
+		// Запасной вариант — 8.8.8.8
+		conn, err = net.Dial("udp", "8.8.8.8:80")
+		if err != nil {
+			return "127.0.0.1"
+		}
 	}
 	defer conn.Close()
 	return conn.LocalAddr().(*net.UDPAddr).IP.String()
