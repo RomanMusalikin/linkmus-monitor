@@ -268,6 +268,8 @@ export default function NodeDetail() {
   const currentTs  = nodes?.find(n => n.name === nodeId)?.timestamp;
   useEffect(() => {
     if (currentCpu == null) return;
+    const currentNode = nodes?.find(n => n.name === nodeId);
+    if (!currentNode?.online) return;
     const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
     setLiveBuffer(prev => [...prev.slice(-59), { value: currentCpu, time }]);
   }, [currentCpu, currentTs]);
