@@ -117,10 +117,10 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 
 	// Режим 1h — сырые метрики из таблицы metrics, агрегация по минутам
 	if rangeParam == "1h" {
-		since := time.Now().UTC().Add(-time.Hour)
+		since := time.Now().Add(-time.Hour)
 		rows, err := dbConn.Query(`
 			SELECT
-				strftime('%H:%M', timestamp) || CASE WHEN CAST(strftime('%S', timestamp) AS INTEGER) < 30 THEN ':00' ELSE ':30' END AS minute,
+				strftime('%H:%M', datetime(timestamp, 'localtime')) || CASE WHEN CAST(strftime('%S', datetime(timestamp, 'localtime')) AS INTEGER) < 30 THEN ':00' ELSE ':30' END AS minute,
 				AVG(cpu_usage),
 				AVG(ram_usage),
 				AVG(ram_total),
@@ -132,7 +132,7 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 			FROM metrics
 			WHERE node_name = ? AND timestamp >= ?
 			GROUP BY strftime('%Y-%m-%dT%H:%M', timestamp) || CASE WHEN CAST(strftime('%S', timestamp) AS INTEGER) < 30 THEN ':00' ELSE ':30' END
-			ORDER BY minute ASC
+			ORDER BY MIN(timestamp) ASC
 		`, name, since.Format(time.RFC3339))
 		if err != nil {
 			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
