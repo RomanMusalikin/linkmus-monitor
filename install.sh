@@ -57,11 +57,12 @@ fetch_latest() {
   local json
   json=$(curl -fsSL "$GITHUB_API")
   LATEST_TAG=$(echo "$json" | grep -o '"tag_name": *"[^"]*"' | head -1 | grep -o '"[^"]*"$' | tr -d '"')
-  ASSET_URL=$(echo "$json" | grep -o "\"browser_download_url\": *\"[^\"]*${filter}[^\"]*\"" | head -1 | grep -o 'https://[^"]*')
+  # Точное совпадение имени файла: убираем [^"]* после filter, чтобы mon-agent-linux не матчил mon-agent-linux-arm64
+  ASSET_URL=$(echo "$json" | grep -o "\"browser_download_url\": *\"[^\"]*${filter}\"" | head -1 | grep -o 'https://[^"]*')
   [ -n "$LATEST_TAG" ] || die "Не удалось получить версию из GitHub"
   [ -n "$ASSET_URL"  ] || die "Артефакт '${filter}' не найден в релизе ${LATEST_TAG}"
   # Проверяем что URL ведёт на GitHub
-  [[ "$ASSET_URL" == https://github.com/* ]] || die "Неожиданный URL артефакта: $ASSET_URL"
+  [[ "$ASSET_URL" == https://github.com/* ]] || [[ "$ASSET_URL" == https://objects.githubusercontent.com/* ]] || die "Неожиданный URL артефакта: $ASSET_URL"
 }
 
 need_update() {
@@ -112,6 +113,12 @@ install_server() {
 
   mkdir -p "$SERVER_DATA"
 
+  if ! id mon-monitor &>/dev/null; then
+    useradd -r -s /sbin/nologin -M -d /nonexistent mon-monitor
+    ok "Создан системный пользователь mon-monitor"
+  fi
+  chown -R mon-monitor:mon-monitor "$SERVER_DATA" "$SERVER_WEB" 2>/dev/null || true
+
   cat > /etc/systemd/system/mon-server.service << SERVICE
 [Unit]
 Description=LinkMus Monitor Server
@@ -127,7 +134,7 @@ Environment=WEB_PATH=$SERVER_WEB
 ExecStart=$SERVER_BIN
 Restart=always
 RestartSec=5
-User=root
+User=mon-monitor
 
 [Install]
 WantedBy=multi-user.target
@@ -384,13 +391,22 @@ install_agent() {
 
   rm -rf "$tmp"
 
+  if ! id mon-monitor &>/dev/null; then
+    useradd -r -s /sbin/nologin -M -d /nonexistent mon-monitor
+    ok "Создан системный пользователь mon-monitor"
+  fi
+  chown -R mon-monitor:mon-monitor "$AGENT_DIR" 2>/dev/null || true
+
   if [ ! -f "$AGENT_CFG" ]; then
     echo ""
     echo -e "${BOLD}Настройка агента:${RESET}"
     read -rp "  URL сервера [http://10.10.10.10:8080]: " srv </dev/tty
     srv="${srv:-http://10.10.10.10:8080}"
+    [[ "$srv" =~ ^https?:// ]] || die "URL должен начинаться с http:// или https://"
+    [[ "$srv" != *'"'* ]] || die "URL не должен содержать кавычки"
     read -rp "  Интервал в секундах [5]: " ivl </dev/tty
     ivl="${ivl:-5}"
+    [[ "${ivl%s}" =~ ^[0-9]+$ ]] || die "Интервал должен быть числом"
     ivl="${ivl%s}s"
     printf 'server:\n  url: "%s/api/metrics"\n  interval: %s\n' "$srv" "$ivl" > "$AGENT_CFG"
     ok "Конфиг создан: $AGENT_CFG"
@@ -400,7 +416,10 @@ install_agent() {
     echo ""
     if confirm "  Изменить настройки?"; then
       read -rp "  URL сервера: " srv </dev/tty
+      [[ "$srv" =~ ^https?:// ]] || die "URL должен начинаться с http:// или https://"
+      [[ "$srv" != *'"'* ]] || die "URL не должен содержать кавычки"
       read -rp "  Интервал в секундах: " ivl </dev/tty
+      [[ "${ivl%s}" =~ ^[0-9]+$ ]] || die "Интервал должен быть числом"
       ivl="${ivl%s}s"
       printf 'server:\n  url: "%s/api/metrics"\n  interval: %s\n' "$srv" "$ivl" > "$AGENT_CFG"
       ok "Конфиг обновлён"
@@ -419,7 +438,7 @@ WorkingDirectory=$AGENT_DIR
 ExecStart=$AGENT_BIN
 Restart=always
 RestartSec=5
-User=root
+User=mon-monitor
 
 [Install]
 WantedBy=multi-user.target
@@ -538,8 +557,10 @@ do_update() {
       [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
     fi
     local asset_url
-    asset_url=$(echo "$json" | grep -o '"browser_download_url": *"[^"]*mon-server-linux-amd64\.tar\.gz[^"]*"' | grep -o 'https://[^"]*')
+    asset_url=$(echo "$json" | grep -o '"browser_download_url": *"[^"]*mon-server-linux-amd64\.tar\.gz"' | grep -o 'https://[^"]*')
     [ -n "$asset_url" ] || { echo -e "${RED}[ERR]${RESET}  Артефакт сервера не найден в релизе $latest_tag"; exit 1; }
+    [[ "$asset_url" == https://github.com/* ]] || [[ "$asset_url" == https://objects.githubusercontent.com/* ]] || \
+      { echo -e "${RED}[ERR]${RESET}  Неожиданный URL: $asset_url"; exit 1; }
     local tmp; tmp=$(mktemp -d)
     echo -e "${CYAN}[INFO]${RESET} Загрузка $latest_tag..."
     curl -fsSL --progress-bar -o "$tmp/server.tar.gz" "$asset_url"
@@ -552,8 +573,11 @@ do_update() {
     rm -rf "$tmp"
     systemctl start mon-server
     echo -e "${GREEN}[ OK ]${RESET} Сервер обновлён до ${BOLD}$latest_tag${RESET}"
-    curl -fsSL "https://raw.githubusercontent.com/$REPO/main/install.sh" | bash -s -- --update-cli 2>/dev/null && \
+    local cli_tmp; cli_tmp=$(mktemp)
+    curl -fsSL -o "$cli_tmp" "https://raw.githubusercontent.com/$REPO/main/install.sh" 2>/dev/null && \
+      bash "$cli_tmp" --update-cli 2>/dev/null && \
       echo -e "${GREEN}[ OK ]${RESET} CLI mon обновлён" || true
+    rm -f "$cli_tmp"
 
   else
     local current=""
@@ -575,8 +599,10 @@ do_update() {
       *) echo -e "${RED}[ERR]${RESET}  Неподдерживаемая архитектура: $arch"; exit 1 ;;
     esac
     local asset_url
-    asset_url=$(echo "$json" | grep -o "\"browser_download_url\": *\"[^\"]*${asset}[^\"]*\"" | head -1 | grep -o 'https://[^"]*')
+    asset_url=$(echo "$json" | grep -o "\"browser_download_url\": *\"[^\"]*${asset}\"" | head -1 | grep -o 'https://[^"]*')
     [ -n "$asset_url" ] || { echo -e "${RED}[ERR]${RESET}  Артефакт агента не найден в релизе $latest_tag"; exit 1; }
+    [[ "$asset_url" == https://github.com/* ]] || [[ "$asset_url" == https://objects.githubusercontent.com/* ]] || \
+      { echo -e "${RED}[ERR]${RESET}  Неожиданный URL: $asset_url"; exit 1; }
     local tmp; tmp=$(mktemp -d)
     echo -e "${CYAN}[INFO]${RESET} Загрузка $latest_tag..."
     curl -fsSL --progress-bar -o "$tmp/mon-agent" "$asset_url"
@@ -586,8 +612,11 @@ do_update() {
     rm -rf "$tmp"
     systemctl start mon-agent
     echo -e "${GREEN}[ OK ]${RESET} Агент обновлён до ${BOLD}$latest_tag${RESET}"
-    curl -fsSL "https://raw.githubusercontent.com/$REPO/main/install.sh" | bash -s -- --update-cli 2>/dev/null && \
+    local cli_tmp; cli_tmp=$(mktemp)
+    curl -fsSL -o "$cli_tmp" "https://raw.githubusercontent.com/$REPO/main/install.sh" 2>/dev/null && \
+      bash "$cli_tmp" --update-cli 2>/dev/null && \
       echo -e "${GREEN}[ OK ]${RESET} CLI mon обновлён" || true
+    rm -f "$cli_tmp"
   fi
 }
 

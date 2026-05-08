@@ -65,12 +65,17 @@ function Do-Update {
     $asset = $release.assets | Where-Object { $_.name -like "*windows*amd64*" } | Select-Object -First 1
     if (-not $asset) { Write-Err "No windows/amd64 artifact found in release $latestTag"; exit 1 }
 
+    $assetUrl = $asset.browser_download_url
+    if ($assetUrl -notmatch '^https://(github\.com|objects\.githubusercontent\.com)/') {
+        Write-Err "Unexpected download URL: $assetUrl"; exit 1
+    }
+
     $tmpDir = Join-Path ([System.IO.Path]::GetTempPath()) ([System.Guid]::NewGuid())
     New-Item -ItemType Directory -Path $tmpDir | Out-Null
 
     Write-Info "Downloading $latestTag..."
     try {
-        Invoke-WebRequest -Uri $asset.browser_download_url -OutFile "$tmpDir\mon-agent.zip" -UseBasicParsing -ErrorAction Stop
+        Invoke-WebRequest -Uri $assetUrl -OutFile "$tmpDir\mon-agent.zip" -UseBasicParsing -ErrorAction Stop
     } catch {
         Write-Err "Download failed: $_"
         Remove-Item -Recurse -Force $tmpDir -ErrorAction SilentlyContinue

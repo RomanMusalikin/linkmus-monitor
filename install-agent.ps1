@@ -51,6 +51,9 @@ if ($useLocal) {
         $asset       = $release.assets | Where-Object { $_.name -like "*windows*amd64*" } | Select-Object -First 1
         if (-not $asset) { Write-Fail "No windows/amd64 artifact found in release $latestTag" }
         $downloadUrl = $asset.browser_download_url
+        if ($downloadUrl -notmatch '^https://(github\.com|objects\.githubusercontent\.com)/') {
+            Write-Fail "Unexpected download URL: $downloadUrl"
+        }
         Write-Ok "Version: $latestTag"
     } catch {
         Write-Host ""
@@ -130,9 +133,13 @@ if (Test-Path $CONFIG_FILE) {
 if ($doConfig) {
     $serverUrl = Read-Host "  Server URL [http://10.10.10.10:8080]"
     if ([string]::IsNullOrWhiteSpace($serverUrl)) { $serverUrl = "http://10.10.10.10:8080" }
+    if ($serverUrl -notmatch '^https?://') { Write-Fail "URL must start with http:// or https://" }
+    if ($serverUrl -match '"') { Write-Fail "URL must not contain double quotes" }
     $intervalRaw = Read-Host "  Send interval in seconds [5]"
     if ([string]::IsNullOrWhiteSpace($intervalRaw)) { $intervalRaw = "5" }
-    $interval = $intervalRaw.Trim().TrimEnd('s').Trim() + "s"
+    $intervalDigits = $intervalRaw.Trim().TrimEnd('s').Trim()
+    if ($intervalDigits -notmatch '^\d+$') { Write-Fail "Interval must be a positive integer" }
+    $interval = $intervalDigits + "s"
 
     @"
 server:
