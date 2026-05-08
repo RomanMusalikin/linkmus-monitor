@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LayoutDashboard, Server, Menu, Pin, PinOff, GripVertical } from 'lucide-react';
 import { useNodeOrder } from '../../hooks/useNodeOrder';
@@ -66,6 +67,13 @@ export default function Sidebar({ isOpen, setIsOpen, toggleSidebar, nodes = [] }
   const handleLinkClick = () => {
     if (window.innerWidth < 768) setIsOpen(false);
   };
+
+  // Закрываем sidebar при расширении окна до десктопного размера
+  useEffect(() => {
+    const onResize = () => { if (window.innerWidth >= 768) setIsOpen(false); };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, [setIsOpen]);
 
   return (
     <aside className={`

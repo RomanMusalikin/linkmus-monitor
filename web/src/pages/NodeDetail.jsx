@@ -155,11 +155,11 @@ function ProcessesCard({ node, className }) {
         : (
           <div className="space-y-1">
             {/* Заголовок */}
-            <div className="grid grid-cols-[2rem_1fr_7rem_7rem] gap-2 px-2 pb-1 text-xs font-medium text-slate-600 uppercase tracking-wider">
+            <div className="grid grid-cols-[2rem_1fr_5rem] sm:grid-cols-[2rem_1fr_7rem_7rem] gap-2 px-2 pb-1 text-xs font-medium text-slate-600 uppercase tracking-wider">
               <span>#</span>
               <span>Процесс</span>
               <span className={`text-right transition-colors duration-300 ${mode === 'cpu' ? 'text-blue-500' : ''}`}>CPU %</span>
-              <span className={`text-right transition-colors duration-300 ${mode === 'ram' ? 'text-emerald-500' : ''}`}>RAM</span>
+              <span className={`hidden sm:block text-right transition-colors duration-300 ${mode === 'ram' ? 'text-emerald-500' : ''}`}>RAM</span>
             </div>
 
             {rows.map((proc, i) => {
@@ -169,7 +169,7 @@ function ProcessesCard({ node, className }) {
 
               return (
                 <div key={proc.pid}
-                  className="group grid grid-cols-[2rem_1fr_7rem_7rem] gap-2 items-center
+                  className="group grid grid-cols-[2rem_1fr_5rem] sm:grid-cols-[2rem_1fr_7rem_7rem] gap-2 items-center
                              px-2 py-2 rounded-xl hover:bg-slate-700/25 transition-colors duration-150">
 
                   {/* Ранг */}
@@ -198,8 +198,8 @@ function ProcessesCard({ node, className }) {
                     </span>
                   </div>
 
-                  {/* RAM */}
-                  <div className="text-right">
+                  {/* RAM — скрыт на мобиле */}
+                  <div className="hidden sm:block text-right">
                     <span className={`text-xs tabular-nums font-medium transition-all duration-300
                       ${mode === 'ram' ? 'text-emerald-400 text-sm' : 'text-slate-500'}`}>
                       {proc.ram >= 1024 ? `${(proc.ram / 1024).toFixed(1)} GB` : `${Math.round(proc.ram)} MB`}
@@ -395,7 +395,7 @@ export default function NodeDetail() {
   const cpuCores = node.cpuCores || [];
 
   return (
-    <div className="p-6 max-w-screen-2xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-screen-2xl mx-auto">
 
       {/* ── Заголовок ── */}
       <div className="flex items-center gap-4 mb-6">
@@ -536,7 +536,7 @@ export default function NodeDetail() {
       </div>
 
       {/* ── Быстрые показатели ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-3 mb-6">
+      <div className="grid grid-cols-2 sm:grid-cols-4 xl:grid-cols-8 gap-2 sm:gap-3 mb-6">
         <TopStat label="CPU" value={`${node.cpu}%`} color={colorByPct(node.cpu)} />
         <TopStat label="RAM" value={`${ramPct.toFixed(0)}%`}
           sub={`${(node.ramUsed || 0).toFixed(1)} / ${(node.ramTotal || 0).toFixed(1)} GB`}
@@ -719,10 +719,10 @@ export default function NodeDetail() {
 
         {/* ── CPU — широкий блок ── */}
         <Card title="Процессор (CPU)" icon={Cpu} iconColor="text-blue-400" className="xl:col-span-2 flex flex-col">
-          <div className="flex gap-4 flex-1 min-h-0">
+          <div className="flex flex-col sm:flex-row gap-4 flex-1 min-h-0">
 
             {/* Левая колонка: инфо + разбивка нагрузки */}
-            <div className="flex-shrink-0 flex flex-col gap-3 w-[190px]">
+            <div className="sm:flex-shrink-0 flex flex-col gap-3 sm:w-[190px]">
               {/* Инфо-панель */}
               <div className="flex flex-col gap-2 bg-slate-900/60 rounded-2xl border border-slate-700/30 px-4 py-4">
                 <div className="text-center">

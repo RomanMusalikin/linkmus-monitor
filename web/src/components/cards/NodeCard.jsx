@@ -184,7 +184,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
                     value={renameValue}
                     onChange={e => setRenameValue(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') handleConfirmRename(e); if (e.key === 'Escape') handleCancelRename(e); }}
-                    className="text-sm font-semibold bg-slate-700 text-slate-100 rounded px-1.5 py-0.5 outline-none border border-blue-500/50 w-32"
+                    className="text-sm font-semibold bg-slate-700 text-slate-100 rounded px-1.5 py-0.5 outline-none border border-blue-500/50 w-24 sm:w-32"
                     maxLength={64}
                   />
                   <button onClick={handleConfirmRename} className="text-emerald-400 hover:text-emerald-300"><Check className="w-3.5 h-3.5" /></button>
@@ -192,7 +192,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
                 </div>
               ) : (
                 <div className="flex items-center gap-1 group/name">
-                  <div className="font-semibold text-slate-100 text-sm leading-tight truncate max-w-[130px]">
+                  <div className="font-semibold text-slate-100 text-sm leading-tight truncate max-w-[100px] sm:max-w-[130px]">
                     {localDisplayName !== null ? (localDisplayName || node.name) : (node.displayName || node.name)}
                   </div>
                   <button

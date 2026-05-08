@@ -82,7 +82,7 @@ export default function Dashboard() {
         <p className="text-slate-500 text-sm mt-1">Мониторинг узлов в реальном времени</p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-2 sm:gap-4 mb-8">
         <StatCard icon={Server} label="Узлы онлайн" value={`${online.length}/${total}`}
           sub={total > 0 ? `${Math.round(online.length/total*100)}% доступно` : '—'}
           color="text-emerald-400" bg="bg-emerald-500/10" />
