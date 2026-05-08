@@ -66,6 +66,11 @@ install_server() {
   fetch_latest "mon-server-linux-amd64.tar.gz"
   need_update "$SERVER_VERSION"
 
+  # Спрашиваем порт
+  echo ""
+  read -rp "  Порт сервера [8080]: " srv_port </dev/tty
+  srv_port="${srv_port:-8080}"
+
   local tmp
   tmp=$(mktemp -d)
   trap "rm -rf $tmp" EXIT
@@ -95,6 +100,8 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory=$SERVER_DATA
+Environment=PORT=$srv_port
+Environment=DB_PATH=$SERVER_DATA/monitor.db
 ExecStart=$SERVER_BIN
 Restart=always
 RestartSec=5
@@ -107,41 +114,95 @@ SERVICE
   systemctl daemon-reload
   systemctl enable mon-server
   systemctl restart mon-server
-  ok "Служба mon-server запущена"
+  ok "Служба mon-server запущена на порту $srv_port"
 
-  if command -v nginx &>/dev/null; then
-    if [ ! -f /etc/nginx/sites-available/linkmus-monitor ]; then
-      cat > /etc/nginx/sites-available/linkmus-monitor << NGINX
-server {
-    listen 80;
-    server_name _;
-    root $SERVER_WEB;
-    index index.html;
-    location /api/ {
-        proxy_pass http://127.0.0.1:8080;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header Host \$host;
-    }
-    location / { try_files \$uri \$uri/ /index.html; }
-}
-NGINX
-      ln -sf /etc/nginx/sites-available/linkmus-monitor /etc/nginx/sites-enabled/
-      rm -f /etc/nginx/sites-enabled/default
-      nginx -t && systemctl reload nginx
-      ok "Nginx настроен"
-    else
-      nginx -t && systemctl reload nginx
-      ok "Nginx перезагружен"
-    fi
-  else
-    warn "Nginx не найден — интерфейс доступен напрямую на :8080"
-  fi
+  # Выбор обратного прокси
+  echo ""
+  echo -e "  Настроить обратный прокси?"
+  echo -e "  ${BOLD}1${RESET}) Nginx"
+  echo -e "  ${BOLD}2${RESET}) Caddy"
+  echo -e "  ${BOLD}3${RESET}) Пропустить"
+  read -rp "  Выбор [1-3]: " proxy_choice </dev/tty
+
+  case "$proxy_choice" in
+    1) setup_nginx "$srv_port" ;;
+    2) setup_caddy "$srv_port" ;;
+    *) warn "Прокси не настроен — сервер доступен напрямую на :${srv_port}" ;;
+  esac
 
   echo "$LATEST_TAG" > "$SERVER_VERSION"
   install_mon_cli
   echo ""
   ok "Сервер ${BOLD}${LATEST_TAG}${RESET} установлен!"
   echo -e "  Адрес: ${BOLD}http://$(hostname -I | awk '{print $1}')${RESET}"
+}
+
+setup_nginx() {
+  local port="$1"
+  if ! command -v nginx &>/dev/null; then
+    warn "Nginx не найден — установите его вручную"
+    return
+  fi
+  if [ ! -f /etc/nginx/sites-available/linkmus-monitor ]; then
+    cat > /etc/nginx/sites-available/linkmus-monitor << NGINX
+server {
+    listen 80;
+    server_name _;
+    root $SERVER_WEB;
+    index index.html;
+    location /api/ {
+        proxy_pass http://127.0.0.1:${port};
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header Host \$host;
+    }
+    location / { try_files \$uri \$uri/ /index.html; }
+}
+NGINX
+    ln -sf /etc/nginx/sites-available/linkmus-monitor /etc/nginx/sites-enabled/
+    rm -f /etc/nginx/sites-enabled/default
+  else
+    # Обновляем порт в существующем конфиге
+    sed -i "s|proxy_pass http://127.0.0.1:[0-9]*|proxy_pass http://127.0.0.1:${port}|g" \
+      /etc/nginx/sites-available/linkmus-monitor
+  fi
+  nginx -t && systemctl reload nginx
+  ok "Nginx настроен"
+}
+
+setup_caddy() {
+  local port="$1"
+  if ! command -v caddy &>/dev/null; then
+    warn "Caddy не найден — установите его вручную"
+    return
+  fi
+  read -rp "  Домен (например monitor.example.com): " caddy_domain </dev/tty
+  [ -n "$caddy_domain" ] || { warn "Домен не указан — Caddy не настроен"; return; }
+
+  local caddyfile="/etc/caddy/Caddyfile"
+  local block
+  block=$(cat << CADDY
+
+${caddy_domain} {
+    reverse_proxy localhost:${port}
+}
+CADDY
+)
+
+  # Удаляем старый блок для этого домена если есть, затем добавляем новый
+  if grep -q "^${caddy_domain}" "$caddyfile" 2>/dev/null; then
+    # Удаляем старый блок (домен + следующий {...})
+    python3 -c "
+import re, sys
+text = open('$caddyfile').read()
+text = re.sub(r'(?m)^${caddy_domain}\s*\{[^}]*\}\n?', '', text)
+open('$caddyfile', 'w').write(text)
+"
+  fi
+
+  echo "$block" >> "$caddyfile"
+  caddy fmt --overwrite "$caddyfile" 2>/dev/null || true
+  caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy
+  ok "Caddy настроен: https://${caddy_domain}"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -345,6 +406,17 @@ do_delete() {
     rm -f /etc/nginx/sites-enabled/linkmus-monitor
     rm -f /etc/nginx/sites-available/linkmus-monitor
     command -v nginx &>/dev/null && nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+    local caddyfile="/etc/caddy/Caddyfile"
+    if [ -f "$caddyfile" ] && command -v python3 &>/dev/null; then
+      python3 -c "
+import re
+text = open('$caddyfile').read()
+text = re.sub(r'(?m)^[^\s#][^\n]*\n\{\n    reverse_proxy localhost:[0-9]+\n\}\n?', '', text)
+open('$caddyfile', 'w').write(text)
+" 2>/dev/null || true
+      command -v caddy &>/dev/null && caddy reload --config "$caddyfile" 2>/dev/null || \
+        systemctl reload caddy 2>/dev/null || true
+    fi
     [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
     echo -e "${GREEN}[ OK ]${RESET} Сервер полностью удалён."
   else
@@ -377,6 +449,17 @@ do_delete() {
     rm -f /etc/nginx/sites-enabled/linkmus-monitor
     rm -f /etc/nginx/sites-available/linkmus-monitor
     command -v nginx &>/dev/null && nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+    local caddyfile="/etc/caddy/Caddyfile"
+    if [ -f "$caddyfile" ] && command -v python3 &>/dev/null; then
+      python3 -c "
+import re
+text = open('$caddyfile').read()
+text = re.sub(r'(?m)^[^\s#][^\n]*\n\{\n    reverse_proxy localhost:[0-9]+\n\}\n?', '', text)
+open('$caddyfile', 'w').write(text)
+" 2>/dev/null || true
+      command -v caddy &>/dev/null && caddy reload --config "$caddyfile" 2>/dev/null || \
+        systemctl reload caddy 2>/dev/null || true
+    fi
     [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
     echo -e "${GREEN}[ OK ]${RESET} Сервер полностью удалён."
   else
@@ -435,6 +518,19 @@ uninstall_server() {
   rm -f /etc/nginx/sites-enabled/linkmus-monitor
   rm -f /etc/nginx/sites-available/linkmus-monitor
   command -v nginx &>/dev/null && nginx -t && systemctl reload nginx 2>/dev/null || true
+
+  # Удаляем блок из Caddyfile если он есть
+  local caddyfile="/etc/caddy/Caddyfile"
+  if [ -f "$caddyfile" ] && command -v python3 &>/dev/null; then
+    python3 -c "
+import re
+text = open('$caddyfile').read()
+text = re.sub(r'(?m)^[^\s#][^\n]*\n\{\n    reverse_proxy localhost:[0-9]+\n\}\n?', '', text)
+open('$caddyfile', 'w').write(text)
+" 2>/dev/null || true
+    command -v caddy &>/dev/null && caddy reload --config "$caddyfile" 2>/dev/null || \
+      systemctl reload caddy 2>/dev/null || true
+  fi
 
   [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon
 
