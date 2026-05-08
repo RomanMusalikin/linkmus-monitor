@@ -1,6 +1,6 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { Monitor, Terminal, Trash2, Wifi, GripVertical, Pencil, Check, X } from 'lucide-react';
+import { Monitor, Terminal, Trash2, Wifi, GripVertical, Pencil, Check, X, WifiOff, Clock } from 'lucide-react';
 import Sparkline from '../charts/Sparkline';
 import { deleteNode, renameNode } from '../../lib/api';
 import { dragState } from '../../lib/dragState';
@@ -140,19 +140,146 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
 
   const netTotal = (node.netRecvSec || 0) + (node.netSentSec || 0);
 
+  const displayName = localDisplayName !== null ? (localDisplayName || node.name) : (node.displayName || node.name);
+
+  const nameBlock = renaming ? (
+    <div className="flex items-center gap-1" onClick={e => e.preventDefault()}>
+      <input
+        ref={renameInputRef}
+        value={renameValue}
+        onChange={e => setRenameValue(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') handleConfirmRename(e); if (e.key === 'Escape') handleCancelRename(e); }}
+        className="text-sm font-semibold bg-slate-700 text-slate-100 rounded px-1.5 py-0.5 outline-none border border-blue-500/50 w-24 sm:w-32"
+        maxLength={64}
+      />
+      <button onClick={handleConfirmRename} className="text-emerald-400 hover:text-emerald-300"><Check className="w-3.5 h-3.5" /></button>
+      <button onClick={handleCancelRename} className="text-slate-500 hover:text-slate-300"><X className="w-3.5 h-3.5" /></button>
+    </div>
+  ) : (
+    <div className="flex items-center gap-1 group/name">
+      <div className={`font-semibold text-sm leading-tight truncate max-w-[100px] sm:max-w-[140px] ${node.online ? 'text-slate-100' : 'text-slate-300'}`}>
+        {displayName}
+      </div>
+      <button onClick={handleStartRename} className="opacity-0 group-hover/name:opacity-100 transition-opacity text-slate-600 hover:text-slate-400">
+        <Pencil className="w-3 h-3" />
+      </button>
+    </div>
+  );
+
+  const deleteBtn = confirming ? (
+    <div className="flex items-center gap-1" onClick={e => e.preventDefault()}>
+      <button onClick={handleDelete} disabled={deleting}
+        className="text-xs px-2 py-0.5 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-all font-medium">
+        {deleting ? '...' : 'Да'}
+      </button>
+      <button onClick={handleCancelConfirm}
+        className="text-xs px-2 py-0.5 rounded-md bg-slate-700/50 text-slate-400 hover:bg-slate-700 border border-slate-600/30 transition-all">
+        Нет
+      </button>
+    </div>
+  ) : (
+    <button onClick={handleDelete} title="Удалить узел"
+      className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200">
+      <Trash2 className="w-3.5 h-3.5" />
+    </button>
+  );
+
+  if (!node.online) {
+    return (
+      <Link
+        to={`/node/${node.name}`}
+        onClick={e => { if (dragState.happened) e.preventDefault(); }}
+        className="group backdrop-blur-sm rounded-2xl border transition-all duration-200 block relative overflow-hidden h-full
+          bg-slate-900/80 border-red-900/50 hover:border-red-700/60 hover:bg-slate-900"
+      >
+        {/* Красная полоска + фоновое свечение */}
+        <div className="h-0.5 w-full bg-gradient-to-r from-red-600/70 via-red-500/50 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-b from-red-950/20 to-transparent pointer-events-none" />
+
+        <div className="p-5 relative">
+          {/* Заголовок */}
+          <div className="flex items-start justify-between mb-5">
+            <div className="flex items-center gap-2.5">
+              {dragHandleProps && (
+                <div {...dragHandleProps} onClick={e => e.preventDefault()}
+                  className="flex-shrink-0 p-1 -ml-1 rounded text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity">
+                  <GripVertical className="w-4 h-4" />
+                </div>
+              )}
+              <div className="relative flex-shrink-0">
+                <div className="p-2 rounded-xl bg-red-500/10">
+                  {isWindows
+                    ? <Monitor className="w-4 h-4 text-red-400/70" />
+                    : <Terminal className="w-4 h-4 text-red-400/70" />}
+                </div>
+                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-900 bg-red-500" />
+              </div>
+              <div className="min-w-0">
+                {nameBlock}
+                <div className="flex items-center gap-1.5 mt-0.5">
+                  <span className="text-xs text-slate-600">{getOSLabel(node.os)}</span>
+                  <AgentVersionBadge version={node.agentVersion} serverVersion={serverVersion} />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-red-500/15 text-red-400 border border-red-500/20">
+                Offline
+              </span>
+              {deleteBtn}
+            </div>
+          </div>
+
+          {/* Центральная зона: иконка + время */}
+          <div className="flex items-center gap-4 py-3 px-4 rounded-xl bg-red-500/5 border border-red-500/10 mb-4">
+            <div className="p-2.5 rounded-xl bg-red-500/10 flex-shrink-0">
+              <WifiOff className="w-5 h-5 text-red-400/80" />
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-medium text-red-300/80">Узел недоступен</div>
+              {node.lastSeen ? (
+                <div className="flex items-center gap-1 mt-0.5">
+                  <Clock className="w-3 h-3 text-slate-600 flex-shrink-0" />
+                  <span className="text-xs text-slate-500 truncate">был онлайн {node.lastSeen}</span>
+                </div>
+              ) : (
+                <div className="text-xs text-slate-600 mt-0.5">данные не получены</div>
+              )}
+            </div>
+            <div className="ml-auto text-right flex-shrink-0">
+              <div className="text-xs font-mono text-slate-600">{node.ip || '—'}</div>
+            </div>
+          </div>
+
+          {/* Последние известные показатели */}
+          {(node.cpu > 0 || node.ramTotal > 0) && (
+            <div className="space-y-2 opacity-40 select-none mb-4">
+              <div className="text-[10px] text-slate-600 uppercase tracking-wider mb-1.5">Последние данные</div>
+              <MiniBar label="CPU" value={node.cpu} right={`${node.cpu || 0}%`} />
+              <MiniBar label="RAM" value={ramPct}
+                right={`${(node.ramUsed || 0).toFixed(1)} / ${(node.ramTotal || 0).toFixed(1)} GB`} />
+            </div>
+          )}
+
+          {/* Sparkline */}
+          <div className="h-8">
+            <Sparkline data={node.cpuHistory} color="#4b1b1b" />
+          </div>
+        </div>
+      </Link>
+    );
+  }
+
   return (
     <Link
       to={`/node/${node.name}`}
       onClick={e => {
         if (dragState.happened) { e.preventDefault(); }
       }}
-      className={`group backdrop-blur-sm rounded-2xl border transition-all duration-200 block relative overflow-hidden h-full
-        ${node.online
-          ? 'bg-slate-800/80 border-slate-700/50 hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5'
-          : 'bg-slate-900/60 border-red-900/40 hover:border-red-700/40'}`}
+      className="group backdrop-blur-sm rounded-2xl border transition-all duration-200 block relative overflow-hidden h-full
+        bg-slate-800/80 border-slate-700/50 hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5"
     >
-      {/* Цветная полоска сверху по статусу */}
-      <div className={`h-0.5 w-full ${node.online ? 'bg-gradient-to-r from-emerald-500/60 to-blue-500/40' : 'bg-slate-700'}`} />
+      <div className="h-0.5 w-full bg-gradient-to-r from-emerald-500/60 to-blue-500/40" />
 
       <div className="p-5">
         {/* ── Заголовок ── */}
@@ -173,36 +300,10 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
                   ? <Monitor className="w-4 h-4 text-blue-400" />
                   : <Terminal className="w-4 h-4 text-emerald-400" />}
               </div>
-              <span className={`absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-800
-                ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
+              <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-800 bg-emerald-400" />
             </div>
             <div className="min-w-0">
-              {renaming ? (
-                <div className="flex items-center gap-1" onClick={e => e.preventDefault()}>
-                  <input
-                    ref={renameInputRef}
-                    value={renameValue}
-                    onChange={e => setRenameValue(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleConfirmRename(e); if (e.key === 'Escape') handleCancelRename(e); }}
-                    className="text-sm font-semibold bg-slate-700 text-slate-100 rounded px-1.5 py-0.5 outline-none border border-blue-500/50 w-24 sm:w-32"
-                    maxLength={64}
-                  />
-                  <button onClick={handleConfirmRename} className="text-emerald-400 hover:text-emerald-300"><Check className="w-3.5 h-3.5" /></button>
-                  <button onClick={handleCancelRename} className="text-slate-500 hover:text-slate-300"><X className="w-3.5 h-3.5" /></button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 group/name">
-                  <div className="font-semibold text-slate-100 text-sm leading-tight truncate max-w-[100px] sm:max-w-[130px]">
-                    {localDisplayName !== null ? (localDisplayName || node.name) : (node.displayName || node.name)}
-                  </div>
-                  <button
-                    onClick={handleStartRename}
-                    className="opacity-0 group-hover/name:opacity-100 transition-opacity text-slate-600 hover:text-slate-400"
-                  >
-                    <Pencil className="w-3 h-3" />
-                  </button>
-                </div>
-              )}
+              {nameBlock}
               <div className="flex items-center gap-1.5 mt-0.5">
                 <span className="text-xs text-slate-500">{getOSLabel(node.os)}</span>
                 <AgentVersionBadge version={node.agentVersion} serverVersion={serverVersion} />
@@ -211,53 +312,27 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
           </div>
 
           <div className="flex items-center gap-1.5 flex-shrink-0">
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium
-              ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-              {node.online ? 'Online' : 'Offline'}
+            <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-emerald-500/10 text-emerald-400">
+              Online
             </span>
-
-            {!node.online && (
-              confirming ? (
-                <div className="flex items-center gap-1" onClick={e => e.preventDefault()}>
-                  <button onClick={handleDelete} disabled={deleting}
-                    className="text-xs px-2 py-0.5 rounded-md bg-red-500/20 text-red-400 hover:bg-red-500/30 border border-red-500/30 transition-all font-medium">
-                    {deleting ? '...' : 'Да'}
-                  </button>
-                  <button onClick={handleCancelConfirm}
-                    className="text-xs px-2 py-0.5 rounded-md bg-slate-700/50 text-slate-400 hover:bg-slate-700 border border-slate-600/30 transition-all">
-                    Нет
-                  </button>
-                </div>
-              ) : (
-                <button onClick={handleDelete} title="Удалить узел"
-                  className="opacity-0 group-hover:opacity-100 p-1 rounded-md text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-all duration-200">
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )
-            )}
           </div>
         </div>
 
         {/* IP + Uptime */}
         <div className="flex items-center gap-2 text-xs text-slate-500 mb-4">
           <span className="font-mono">{node.ip || '—'}</span>
-          {node.online ? (
-            <><span className="text-slate-700">·</span><span>⬆ {node.uptime || '0 ч.'}</span></>
-          ) : node.lastSeen ? (
-            <><span className="text-slate-700">·</span><span className="text-red-400/60">был {node.lastSeen}</span></>
-          ) : null}
+          <span className="text-slate-700">·</span>
+          <span>⬆ {node.uptime || '0 ч.'}</span>
         </div>
 
         {/* ── Метрики ── */}
-        <div className={`space-y-2.5 ${!node.online ? 'opacity-35 pointer-events-none' : ''}`}>
-          <MiniBar label="CPU" value={node.cpu}
-            right={`${node.cpu || 0}%`} />
+        <div className="space-y-2.5">
+          <MiniBar label="CPU" value={node.cpu} right={`${node.cpu || 0}%`} />
           <MiniBar label="RAM" value={ramPct}
             right={`${(node.ramUsed || 0).toFixed(1)} / ${(node.ramTotal || 0).toFixed(1)} GB`} />
           <MiniBar label="Disk" value={node.diskUsage}
             right={`${(node.diskUsage || 0).toFixed(1)}%`} />
 
-          {/* Сеть + TCP */}
           <div className="flex items-center justify-between pt-0.5">
             <div className="flex items-center gap-1 text-xs text-slate-500">
               <Wifi className="w-3 h-3" />
@@ -276,7 +351,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
 
         {/* ── Sparkline ── */}
         <div className="mt-3 h-10">
-          <Sparkline data={node.cpuHistory} color={node.online ? '#3b82f6' : '#334155'} />
+          <Sparkline data={node.cpuHistory} color="#3b82f6" />
         </div>
 
         {/* ── Сервисные пробы ── */}
