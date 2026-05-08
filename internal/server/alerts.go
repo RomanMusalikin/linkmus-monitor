@@ -3,9 +3,13 @@ package server
 import (
 	"crypto/tls"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"net/smtp"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -22,6 +26,11 @@ type AlertSettings struct {
 	RAMThreshold  int    `json:"ramThreshold"`
 	CooldownMin   int    `json:"cooldownMin"`
 	Enabled       bool   `json:"enabled"`
+
+	TGBotToken  string `json:"tgBotToken"`
+	TGChatID    string `json:"tgChatID"`
+	TGTopicID   int    `json:"tgTopicID"`
+	TGEnabled   bool   `json:"tgEnabled"`
 }
 
 func GetAlertSettings(db *sql.DB) AlertSettings {
@@ -29,25 +38,32 @@ func GetAlertSettings(db *sql.DB) AlertSettings {
 	s.SMTPPort = 587
 	s.CooldownMin = 30
 	db.QueryRow(`SELECT smtp_host,smtp_port,smtp_user,smtp_pass,from_email,to_email,
-		cpu_threshold,ram_threshold,cooldown_min,enabled FROM alert_settings WHERE id=1`).
+		cpu_threshold,ram_threshold,cooldown_min,enabled,
+		COALESCE(tg_bot_token,''),COALESCE(tg_chat_id,''),COALESCE(tg_topic_id,0),COALESCE(tg_enabled,0)
+		FROM alert_settings WHERE id=1`).
 		Scan(&s.SMTPHost, &s.SMTPPort, &s.SMTPUser, &s.SMTPPass,
-			&s.FromEmail, &s.ToEmail, &s.CPUThreshold, &s.RAMThreshold, &s.CooldownMin, &s.Enabled)
+			&s.FromEmail, &s.ToEmail, &s.CPUThreshold, &s.RAMThreshold, &s.CooldownMin, &s.Enabled,
+			&s.TGBotToken, &s.TGChatID, &s.TGTopicID, &s.TGEnabled)
 	return s
 }
 
 func SaveAlertSettings(db *sql.DB, s AlertSettings) error {
 	_, err := db.Exec(`INSERT INTO alert_settings
 		(id,smtp_host,smtp_port,smtp_user,smtp_pass,from_email,to_email,
-		 cpu_threshold,ram_threshold,cooldown_min,enabled)
-		VALUES (1,?,?,?,?,?,?,?,?,?,?)
+		 cpu_threshold,ram_threshold,cooldown_min,enabled,
+		 tg_bot_token,tg_chat_id,tg_topic_id,tg_enabled)
+		VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port,
 		  smtp_user=excluded.smtp_user, smtp_pass=excluded.smtp_pass,
 		  from_email=excluded.from_email, to_email=excluded.to_email,
 		  cpu_threshold=excluded.cpu_threshold, ram_threshold=excluded.ram_threshold,
-		  cooldown_min=excluded.cooldown_min, enabled=excluded.enabled`,
+		  cooldown_min=excluded.cooldown_min, enabled=excluded.enabled,
+		  tg_bot_token=excluded.tg_bot_token, tg_chat_id=excluded.tg_chat_id,
+		  tg_topic_id=excluded.tg_topic_id, tg_enabled=excluded.tg_enabled`,
 		s.SMTPHost, s.SMTPPort, s.SMTPUser, s.SMTPPass, s.FromEmail, s.ToEmail,
-		s.CPUThreshold, s.RAMThreshold, s.CooldownMin, s.Enabled)
+		s.CPUThreshold, s.RAMThreshold, s.CooldownMin, s.Enabled,
+		s.TGBotToken, s.TGChatID, s.TGTopicID, s.TGEnabled)
 	return err
 }
 
@@ -55,6 +71,11 @@ func SaveAlertSettings(db *sql.DB, s AlertSettings) error {
 func SendTestEmail(s AlertSettings) error {
 	return sendMail(s, "✅ LinkMus Monitor — тест уведомлений",
 		"Если вы получили это письмо, настройка SMTP работает корректно.")
+}
+
+// SendTestTelegram отправляет тестовое сообщение в Telegram.
+func SendTestTelegram(s AlertSettings) error {
+	return sendTelegram(s, "✅ *LinkMus Monitor* — тест уведомлений\n\nЕсли вы получили это сообщение, настройка Telegram работает корректно\\.")
 }
 
 // ── Трекер кулдаунов (в памяти) ─────────────────────────────────────────────
@@ -88,7 +109,9 @@ func StartAlertChecker(db *sql.DB) {
 
 func checkAlerts(db *sql.DB) {
 	s := GetAlertSettings(db)
-	if !s.Enabled || s.ToEmail == "" || s.SMTPHost == "" {
+	emailOK := s.Enabled && s.ToEmail != "" && s.SMTPHost != ""
+	tgOK := s.TGEnabled && s.TGBotToken != "" && s.TGChatID != ""
+	if !emailOK && !tgOK {
 		return
 	}
 
@@ -108,16 +131,25 @@ func checkAlerts(db *sql.DB) {
 		if s.CPUThreshold > 0 && int(n.CPU) >= s.CPUThreshold {
 			key := n.Name + ":cpu"
 			if canAlert(key, s.CooldownMin) {
-				subject := fmt.Sprintf("⚠️ CPU %d%% на узле %s", int(n.CPU), displayName)
-				body := fmt.Sprintf(
-					"Узел: %s\nМетрика: CPU\nЗначение: %d%%\nПорог: %d%%\nВремя: %s",
-					displayName, int(n.CPU), s.CPUThreshold,
-					time.Now().Format("02.01.2006 15:04:05"),
-				)
-				if err := sendMail(s, subject, body); err != nil {
-					log.Printf("⚠️  alert email CPU %s: %v", n.Name, err)
-				} else {
-					log.Printf("📧 Алерт CPU отправлен: %s = %d%%", displayName, int(n.CPU))
+				ts := time.Now().Format("02.01.2006 15:04:05")
+				if emailOK {
+					subject := fmt.Sprintf("⚠️ CPU %d%% на узле %s", int(n.CPU), displayName)
+					body := fmt.Sprintf("Узел: %s\nМетрика: CPU\nЗначение: %d%%\nПорог: %d%%\nВремя: %s",
+						displayName, int(n.CPU), s.CPUThreshold, ts)
+					if err := sendMail(s, subject, body); err != nil {
+						log.Printf("⚠️  alert email CPU %s: %v", n.Name, err)
+					} else {
+						log.Printf("📧 Алерт CPU отправлен: %s = %d%%", displayName, int(n.CPU))
+					}
+				}
+				if tgOK {
+					msg := fmt.Sprintf("⚠️ *CPU %d%%* на узле *%s*\nПорог: %d%%\nВремя: %s",
+						int(n.CPU), displayName, s.CPUThreshold, ts)
+					if err := sendTelegram(s, msg); err != nil {
+						log.Printf("⚠️  alert tg CPU %s: %v", n.Name, err)
+					} else {
+						log.Printf("📨 Алерт TG CPU: %s = %d%%", displayName, int(n.CPU))
+					}
 				}
 			}
 		}
@@ -127,21 +159,61 @@ func checkAlerts(db *sql.DB) {
 			if ramPct >= s.RAMThreshold {
 				key := n.Name + ":ram"
 				if canAlert(key, s.CooldownMin) {
-					subject := fmt.Sprintf("⚠️ RAM %d%% на узле %s", ramPct, displayName)
-					body := fmt.Sprintf(
-						"Узел: %s\nМетрика: RAM\nЗначение: %d%% (%.1f / %.1f GB)\nПорог: %d%%\nВремя: %s",
-						displayName, ramPct, n.RAMUsed, n.RAMTotal, s.RAMThreshold,
-						time.Now().Format("02.01.2006 15:04:05"),
-					)
-					if err := sendMail(s, subject, body); err != nil {
-						log.Printf("⚠️  alert email RAM %s: %v", n.Name, err)
-					} else {
-						log.Printf("📧 Алерт RAM отправлен: %s = %d%%", displayName, ramPct)
+					ts := time.Now().Format("02.01.2006 15:04:05")
+					if emailOK {
+						subject := fmt.Sprintf("⚠️ RAM %d%% на узле %s", ramPct, displayName)
+						body := fmt.Sprintf("Узел: %s\nМетрика: RAM\nЗначение: %d%% (%.1f / %.1f GB)\nПорог: %d%%\nВремя: %s",
+							displayName, ramPct, n.RAMUsed, n.RAMTotal, s.RAMThreshold, ts)
+						if err := sendMail(s, subject, body); err != nil {
+							log.Printf("⚠️  alert email RAM %s: %v", n.Name, err)
+						} else {
+							log.Printf("📧 Алерт RAM отправлен: %s = %d%%", displayName, ramPct)
+						}
+					}
+					if tgOK {
+						msg := fmt.Sprintf("⚠️ *RAM %d%%* на узле *%s*\n%.1f / %.1f GB\nПорог: %d%%\nВремя: %s",
+							ramPct, displayName, n.RAMUsed, n.RAMTotal, s.RAMThreshold, ts)
+						if err := sendTelegram(s, msg); err != nil {
+							log.Printf("⚠️  alert tg RAM %s: %v", n.Name, err)
+						} else {
+							log.Printf("📨 Алерт TG RAM: %s = %d%%", displayName, ramPct)
+						}
 					}
 				}
 			}
 		}
 	}
+}
+
+// ── Telegram-отправка ────────────────────────────────────────────────────────
+
+func sendTelegram(s AlertSettings, text string) error {
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.TGBotToken)
+	params := url.Values{
+		"chat_id":    {s.TGChatID},
+		"text":       {text},
+		"parse_mode": {"Markdown"},
+	}
+	if s.TGTopicID > 0 {
+		params.Set("message_thread_id", fmt.Sprintf("%d", s.TGTopicID))
+	}
+
+	resp, err := http.PostForm(apiURL, params)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	var result struct {
+		OK          bool   `json:"ok"`
+		Description string `json:"description"`
+	}
+	json.Unmarshal(body, &result)
+	if !result.OK {
+		return fmt.Errorf("telegram API: %s", result.Description)
+	}
+	return nil
 }
 
 // ── SMTP-отправка ────────────────────────────────────────────────────────────

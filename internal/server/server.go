@@ -130,6 +130,7 @@ func Run() {
 
 	// Настройки алертов
 	http.HandleFunc("/api/settings/alerts", requireAuth(handleAlertSettings))
+	http.HandleFunc("/api/settings/alerts/test-telegram", requireAuth(handleTestTelegram))
 
 	// Фронтенд — статические файлы с SPA-fallback
 	webPath := os.Getenv("WEB_PATH")
@@ -332,6 +333,22 @@ func handleCreateUser(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{"status": "created"})
+}
+
+// handleTestTelegram — POST /api/settings/alerts/test-telegram
+func handleTestTelegram(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	corsHeaders(w)
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+	s := GetAlertSettings(dbConn)
+	if err := SendTestTelegram(s); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadGateway)
+		return
+	}
+	json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
 }
 
 // handleAlertSettings — GET/PUT /api/settings/alerts

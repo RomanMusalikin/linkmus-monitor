@@ -128,3 +128,14 @@ export async function sendTestEmail() {
     throw new Error(err.error || 'Ошибка отправки');
   }
 }
+
+export async function sendTestTelegram() {
+  const res = await fetch(`${API_BASE}/settings/alerts/test-telegram`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Ошибка отправки');
+  }
+}
