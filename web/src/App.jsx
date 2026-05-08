@@ -12,7 +12,7 @@ import { useVersion } from './hooks/useVersion';
 import { NodesContext } from './context/NodesContext';
 
 function AppShell({ onLogout }) {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(window.innerWidth >= 768);
   const toggleSidebar = () => setIsSidebarOpen(!isSidebarOpen);
   const nodesState = useNodes();
   const { data: nodes } = nodesState;
@@ -26,7 +26,7 @@ function AppShell({ onLogout }) {
       <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} toggleSidebar={toggleSidebar} nodes={nodes ?? []} />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
-        <Header onlineCount={onlineCount} totalCount={totalCount} onLogout={onLogout} version={serverVersion} />
+        <Header onlineCount={onlineCount} totalCount={totalCount} onLogout={onLogout} version={serverVersion} onMenuClick={toggleSidebar} />
         <main className="flex-1 overflow-x-hidden overflow-y-auto">
           <Routes>
             <Route path="/" element={<Dashboard />} />

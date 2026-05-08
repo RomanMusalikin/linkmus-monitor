@@ -398,90 +398,158 @@ export default function NodeDetail() {
     <div className="p-4 sm:p-6 max-w-screen-2xl mx-auto">
 
       {/* ── Заголовок ── */}
-      <div className="flex items-center gap-4 mb-6">
-        <Link to="/"
-          className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700
-                     text-slate-400 hover:text-slate-100 transition-colors flex-shrink-0">
-          <ArrowLeft className="w-4 h-4" />
-        </Link>
-        <div className="flex items-center gap-3 flex-1 min-w-0">
-          <div className={`p-2 rounded-xl ${isWindows ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
-            {isWindows
-              ? <Monitor className="w-5 h-5 text-blue-400" />
-              : <Terminal className="w-5 h-5 text-emerald-400" />}
-          </div>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {renaming ? (
-                <div className="flex items-center gap-1.5">
-                  <input
-                    ref={renameInputRef}
-                    value={renameValue}
-                    onChange={e => setRenameValue(e.target.value)}
-                    onKeyDown={async e => {
-                      if (e.key === 'Enter') {
-                        const alias = renameValue.trim();
-                        await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
-                        setLocalDisplayName(alias === node.name ? '' : alias);
-                        refresh?.();
-                        setRenaming(false);
-                      }
-                      if (e.key === 'Escape') setRenaming(false);
-                    }}
-                    className="text-xl font-bold bg-slate-700 text-slate-100 rounded-lg px-2 py-0.5 outline-none border border-blue-500/50 w-48"
-                    maxLength={64}
-                  />
-                  <button onClick={async () => {
-                    const alias = renameValue.trim();
-                    await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
-                    setLocalDisplayName(alias === node.name ? '' : alias);
-                    refresh?.();
-                    setRenaming(false);
-                  }} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
-                  <button onClick={() => setRenaming(false)} className="text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1.5 group/name">
-                  <h1 className="text-xl font-bold text-slate-100">{node.displayName || node.name}</h1>
-                  <button onClick={() => { setRenameValue(node.displayName || node.name); setRenaming(true); setTimeout(() => renameInputRef.current?.select(), 0); }}
-                    className="opacity-0 group-hover/name:opacity-100 transition-opacity text-slate-600 hover:text-slate-400">
-                    <Pencil className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              )}
-              <span className={`w-2 h-2 rounded-full ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium
-                ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                {node.online ? 'Online' : `Offline · был ${node.lastSeen}`}
-              </span>
-              {node.agentVersion && node.agentVersion !== 'unknown' && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium
-                  ${serverVersion && node.agentVersion === serverVersion
-                    ? 'bg-emerald-500/10 text-emerald-400/80'
-                    : 'bg-amber-500/10 text-amber-400'}`}>
-                  agent {node.agentVersion}
+      <div className="mb-6">
+        {/* Строка 1: назад + имя узла */}
+        <div className="flex items-center gap-4">
+          <Link to="/"
+            className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700
+                       text-slate-400 hover:text-slate-100 transition-colors flex-shrink-0">
+            <ArrowLeft className="w-4 h-4" />
+          </Link>
+          <div className="flex items-center gap-3 flex-1 min-w-0">
+            <div className={`p-2 rounded-xl flex-shrink-0 ${isWindows ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
+              {isWindows
+                ? <Monitor className="w-5 h-5 text-blue-400" />
+                : <Terminal className="w-5 h-5 text-emerald-400" />}
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                {renaming ? (
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      ref={renameInputRef}
+                      value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onKeyDown={async e => {
+                        if (e.key === 'Enter') {
+                          const alias = renameValue.trim();
+                          await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
+                          setLocalDisplayName(alias === node.name ? '' : alias);
+                          refresh?.();
+                          setRenaming(false);
+                        }
+                        if (e.key === 'Escape') setRenaming(false);
+                      }}
+                      className="text-xl font-bold bg-slate-700 text-slate-100 rounded-lg px-2 py-0.5 outline-none border border-blue-500/50 w-48"
+                      maxLength={64}
+                    />
+                    <button onClick={async () => {
+                      const alias = renameValue.trim();
+                      await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
+                      setLocalDisplayName(alias === node.name ? '' : alias);
+                      refresh?.();
+                      setRenaming(false);
+                    }} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
+                    <button onClick={() => setRenaming(false)} className="text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 group/name">
+                    <h1 className="text-xl font-bold text-slate-100 truncate">{node.displayName || node.name}</h1>
+                    <button onClick={() => { setRenameValue(node.displayName || node.name); setRenaming(true); setTimeout(() => renameInputRef.current?.select(), 0); }}
+                      className="opacity-0 group-hover/name:opacity-100 transition-opacity text-slate-600 hover:text-slate-400 flex-shrink-0">
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0
+                  ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                  {node.online ? 'Online' : `Offline · был ${node.lastSeen}`}
                 </span>
+                {node.agentVersion && node.agentVersion !== 'unknown' && (
+                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium flex-shrink-0
+                    ${serverVersion && node.agentVersion === serverVersion
+                      ? 'bg-emerald-500/10 text-emerald-400/80'
+                      : 'bg-amber-500/10 text-amber-400'}`}>
+                    agent {node.agentVersion}
+                  </span>
+                )}
+              </div>
+              <p className="text-slate-500 text-sm truncate">
+                {getOSLabel(node.os)} · {node.ip || '—'} · ⬆ {node.uptime || '0 ч.'}
+                {node.cpuModel ? ` · ${node.cpuModel}` : ''}
+              </p>
+            </div>
+          </div>
+
+          {/* Кнопки — только на десктопе в одну строку с заголовком */}
+          <div className="hidden sm:flex items-center gap-2 ml-auto flex-shrink-0">
+            <div className="relative"
+              onMouseEnter={() => { clearTimeout(exportCloseTimer.current); setExportOpen(true); }}
+              onMouseLeave={() => { exportCloseTimer.current = setTimeout(() => setExportOpen(false), 200); }}>
+              <button className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
+                bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600">
+                <Download className="w-4 h-4" />
+                Экспорт
+              </button>
+              {exportOpen && (
+                <div className="absolute right-0 top-full mt-1 flex flex-col z-10
+                  bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden min-w-[120px]">
+                  <button onClick={() => { handleExport('csv'); setExportOpen(false); }}
+                    className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">CSV</button>
+                  <button onClick={() => { handleExport('json'); setExportOpen(false); }}
+                    className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">JSON</button>
+                </div>
               )}
             </div>
-            <p className="text-slate-500 text-sm truncate">
-              {getOSLabel(node.os)} · {node.ip || '—'} · ⬆ {node.uptime || '0 ч.'}
-              {node.cpuModel ? ` · ${node.cpuModel}` : ''}
-            </p>
+            <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden text-sm">
+              {[
+                { key: 'live', label: 'Сейчас' },
+                { key: '1h',   label: '1ч' },
+                { key: '24h',  label: '24ч' },
+                { key: '7d',   label: '7д' },
+                { key: '14d',  label: '14д' },
+                { key: '30d',  label: '30д' },
+              ].map(({ key, label }) => (
+                <button key={key}
+                  onClick={() => key === 'live' ? (setHistoryRange('live'), setLongHistory(null)) : selectHistoryRange(key)}
+                  disabled={loadingFull || loadingLong}
+                  className={`px-3 py-1.5 font-medium transition-all
+                    ${historyRange === key
+                      ? 'bg-violet-500/20 text-violet-400'
+                      : 'text-slate-500 hover:text-slate-300'}`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {!node.online && (
+              <div className="flex items-center gap-2">
+                {confirmDelete && (
+                  <button onClick={() => setConfirmDelete(false)}
+                    className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-slate-400 hover:bg-slate-600 transition-all border border-slate-600">
+                    Отмена
+                  </button>
+                )}
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
+                    ${confirmDelete
+                      ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30'
+                      : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10'}`}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  {deleting ? 'Удаление...' : confirmDelete ? 'Подтвердить удаление' : 'Удалить узел'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Кнопки в правой части заголовка */}
-        <div className="flex items-center gap-2 ml-auto flex-shrink-0">
-          <div className="relative"
+        {/* Строка 2: кнопки на мобильном (скролл по горизонтали) */}
+        <div className="flex sm:hidden items-center gap-2 mt-3 overflow-x-auto pb-1">
+          <div className="relative flex-shrink-0"
             onMouseEnter={() => { clearTimeout(exportCloseTimer.current); setExportOpen(true); }}
             onMouseLeave={() => { exportCloseTimer.current = setTimeout(() => setExportOpen(false), 200); }}>
-            <button className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
-              bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600">
+            <button
+              onClick={() => setExportOpen(v => !v)}
+              className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
+              bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600 whitespace-nowrap">
               <Download className="w-4 h-4" />
               Экспорт
             </button>
             {exportOpen && (
-              <div className="absolute right-0 top-full mt-1 flex flex-col z-10
+              <div className="absolute left-0 top-full mt-1 flex flex-col z-10
                 bg-slate-800 border border-slate-700 rounded-xl shadow-xl overflow-hidden min-w-[120px]">
                 <button onClick={() => { handleExport('csv'); setExportOpen(false); }}
                   className="px-4 py-2 text-sm text-slate-300 hover:bg-slate-700 text-left">CSV</button>
@@ -490,7 +558,7 @@ export default function NodeDetail() {
               </div>
             )}
           </div>
-          <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden text-sm">
+          <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden text-sm flex-shrink-0">
             {[
               { key: 'live', label: 'Сейчас' },
               { key: '1h',   label: '1ч' },
@@ -502,7 +570,7 @@ export default function NodeDetail() {
               <button key={key}
                 onClick={() => key === 'live' ? (setHistoryRange('live'), setLongHistory(null)) : selectHistoryRange(key)}
                 disabled={loadingFull || loadingLong}
-                className={`px-3 py-1.5 font-medium transition-all
+                className={`px-3 py-1.5 font-medium transition-all whitespace-nowrap
                   ${historyRange === key
                     ? 'bg-violet-500/20 text-violet-400'
                     : 'text-slate-500 hover:text-slate-300'}`}>
@@ -510,28 +578,27 @@ export default function NodeDetail() {
               </button>
             ))}
           </div>
-
-        {!node.online && (
-          <div className="flex items-center gap-2">
-            {confirmDelete && (
-              <button onClick={() => setConfirmDelete(false)}
-                className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-slate-400 hover:bg-slate-600 transition-all border border-slate-600">
-                Отмена
+          {!node.online && (
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {confirmDelete && (
+                <button onClick={() => setConfirmDelete(false)}
+                  className="text-sm px-3 py-1.5 rounded-lg bg-slate-700 text-slate-400 hover:bg-slate-600 transition-all border border-slate-600 whitespace-nowrap">
+                  Отмена
+                </button>
+              )}
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium whitespace-nowrap
+                  ${confirmDelete
+                    ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30'
+                    : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10'}`}
+              >
+                <Trash2 className="w-4 h-4" />
+                {deleting ? 'Удаление...' : confirmDelete ? 'Подтвердить' : 'Удалить'}
               </button>
-            )}
-            <button
-              onClick={handleDelete}
-              disabled={deleting}
-              className={`flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
-                ${confirmDelete
-                  ? 'bg-red-500/20 text-red-400 border-red-500/40 hover:bg-red-500/30'
-                  : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-red-400 hover:border-red-500/30 hover:bg-red-500/10'}`}
-            >
-              <Trash2 className="w-4 h-4" />
-              {deleting ? 'Удаление...' : confirmDelete ? 'Подтвердить удаление' : 'Удалить узел'}
-            </button>
-          </div>
-        )}
+            </div>
+          )}
         </div>
       </div>
 

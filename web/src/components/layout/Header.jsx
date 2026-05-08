@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { Activity, LogOut, UserPlus, X, Settings } from 'lucide-react';
+import { Activity, LogOut, UserPlus, X, Settings, Menu } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { logout, createUser } from '../../lib/api';
 
@@ -82,7 +82,7 @@ function CreateUserModal({ onClose }) {
   );
 }
 
-export default function Header({ onlineCount = 0, totalCount = 0, onLogout, version }) {
+export default function Header({ onlineCount = 0, totalCount = 0, onLogout, version, onMenuClick }) {
   const [time, setTime] = useState(new Date());
   const [showCreateUser, setShowCreateUser] = useState(false);
 
@@ -100,13 +100,20 @@ export default function Header({ onlineCount = 0, totalCount = 0, onLogout, vers
     <>
       <header className="bg-slate-800 border-b border-slate-700 px-4 sm:px-6 py-4 flex items-center justify-between z-10 relative">
         <div className="flex items-center gap-3 sm:gap-4">
+          <button
+            onClick={onMenuClick}
+            className="md:hidden p-2 rounded-lg text-slate-400 hover:bg-slate-700/50 hover:text-slate-200 transition-colors"
+            title="Меню"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
           <div className="hidden sm:flex bg-blue-500/20 p-2 rounded-lg">
             <Activity className="text-blue-500 w-5 h-5 sm:w-6 sm:h-6" />
           </div>
-          <div>
+          <Link to="/" className="hover:opacity-80 transition-opacity">
             <h1 className="text-lg sm:text-xl font-bold tracking-tight text-slate-100">LinkMus Monitor</h1>
             {version && <span className="text-xs text-slate-500">{version}</span>}
-          </div>
+          </Link>
         </div>
 
         <div className="flex items-center gap-3 sm:gap-4">
