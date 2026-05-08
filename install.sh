@@ -15,6 +15,10 @@ AGENT_BIN="$AGENT_DIR/mon-agent"
 AGENT_CFG="$AGENT_DIR/agent-config.yaml"
 AGENT_VERSION="$AGENT_DIR/.version"
 
+# Маркеры нашего блока в Caddyfile — удаляем ТОЛЬКО между ними
+CADDY_MARKER_BEGIN="# BEGIN linkmus-monitor"
+CADDY_MARKER_END="# END linkmus-monitor"
+
 RED='\033[0;31m'; GREEN='\033[0;32m'; YELLOW='\033[1;33m'
 CYAN='\033[0;36m'; BOLD='\033[1m'; RESET='\033[0m'
 
@@ -33,6 +37,20 @@ detect_arch() {
   esac
 }
 
+# Валидация порта: только цифры, диапазон 1-65535
+validate_port() {
+  local p="$1"
+  [[ "$p" =~ ^[0-9]+$ ]] || die "Порт должен быть числом: $p"
+  [ "$p" -ge 1 ] && [ "$p" -le 65535 ] || die "Порт вне диапазона 1-65535: $p"
+}
+
+# Валидация домена: нет пробелов, спецсимволов shell, минимальная длина
+validate_domain() {
+  local d="$1"
+  [[ "$d" =~ ^[a-zA-Z0-9._-]+$ ]] || die "Недопустимые символы в домене: $d"
+  [ "${#d}" -ge 3 ] || die "Домен слишком короткий: $d"
+}
+
 fetch_latest() {
   local filter="$1"
   require curl
@@ -42,6 +60,8 @@ fetch_latest() {
   ASSET_URL=$(echo "$json" | grep -o "\"browser_download_url\": *\"[^\"]*${filter}[^\"]*\"" | head -1 | grep -o 'https://[^"]*')
   [ -n "$LATEST_TAG" ] || die "Не удалось получить версию из GitHub"
   [ -n "$ASSET_URL"  ] || die "Артефакт '${filter}' не найден в релизе ${LATEST_TAG}"
+  # Проверяем что URL ведёт на GitHub
+  [[ "$ASSET_URL" == https://github.com/* ]] || die "Неожиданный URL артефакта: $ASSET_URL"
 }
 
 need_update() {
@@ -66,14 +86,13 @@ install_server() {
   fetch_latest "mon-server-linux-amd64.tar.gz"
   need_update "$SERVER_VERSION"
 
-  # Спрашиваем порт
   echo ""
   read -rp "  Порт сервера [8080]: " srv_port </dev/tty
   srv_port="${srv_port:-8080}"
+  validate_port "$srv_port"
 
   local tmp
   tmp=$(mktemp -d)
-  trap "rm -rf $tmp" EXIT
 
   info "Загрузка сервера..."
   curl -fsSL --progress-bar -o "$tmp/server.tar.gz" "$ASSET_URL"
@@ -88,6 +107,8 @@ install_server() {
   rm -rf "${SERVER_WEB:?}"/*
   cp -r "$tmp/web-dist/." "$SERVER_WEB/"
   ok "Фронтенд: $SERVER_WEB"
+
+  rm -rf "$tmp"
 
   mkdir -p "$SERVER_DATA"
 
@@ -117,7 +138,6 @@ SERVICE
   systemctl restart mon-server
   ok "Служба mon-server запущена на порту $srv_port"
 
-  # Выбор обратного прокси
   echo ""
   echo -e "  Настроить обратный прокси?"
   echo -e "  ${BOLD}1${RESET}) Nginx"
@@ -162,7 +182,6 @@ NGINX
     ln -sf /etc/nginx/sites-available/linkmus-monitor /etc/nginx/sites-enabled/
     rm -f /etc/nginx/sites-enabled/default
   else
-    # Обновляем порт в существующем конфиге
     sed -i "s|proxy_pass http://127.0.0.1:[0-9]*|proxy_pass http://127.0.0.1:${port}|g" \
       /etc/nginx/sites-available/linkmus-monitor
   fi
@@ -173,7 +192,6 @@ NGINX
 setup_caddy() {
   local port="$1"
 
-  # Определяем режим: локальный Caddy или в Docker
   local caddy_mode=""
   local caddyfile=""
   local caddy_container=""
@@ -187,10 +205,8 @@ setup_caddy() {
     caddy_container=$(docker ps --format '{{.Names}}' | grep -i caddy | head -1)
     if [ -n "$caddy_container" ]; then
       caddy_mode="docker"
-      # Получаем путь к Caddyfile на хосте из монтирований контейнера
       caddyfile=$(docker inspect "$caddy_container" \
         --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}')
-      # Caddy в Docker не имеет доступа к localhost хоста — используем внешний IP
       proxy_host=$(hostname -I | awk '{print $1}')
     fi
   fi
@@ -209,57 +225,59 @@ setup_caddy() {
 
   read -rp "  Домен (например monitor.example.com): " caddy_domain </dev/tty
   [ -n "$caddy_domain" ] || { warn "Домен не указан — Caddy не настроен"; return; }
+  validate_domain "$caddy_domain"
 
-  # Удаляем все существующие блоки для этого домена
-  python3 -c "
-import re, sys
+  # Удаляем только наш маркированный блок — передаём путь через аргумент, не интерполяцию
+  python3 - "$caddyfile" << 'PYEOF'
+import sys
 
-domain = 'https://$caddy_domain'
-path = '$caddyfile'
+path = sys.argv[1]
+begin = "# BEGIN linkmus-monitor"
+end   = "# END linkmus-monitor"
+
 text = open(path).read()
-
-# Удаляем блок: ищем строку с доменом и парсим скобки
-result = []
-i = 0
 lines = text.split('\n')
-skip_until_close = False
-depth = 0
-
 out = []
-i = 0
-while i < len(lines):
-    line = lines[i]
-    if line.strip().startswith(domain) and '{' in line:
-        # Пропускаем этот блок целиком
-        depth = line.count('{') - line.count('}')
-        i += 1
-        while i < len(lines) and depth > 0:
-            depth += lines[i].count('{') - lines[i].count('}')
-            i += 1
-        # Пропускаем пустую строку после блока если есть
-        if i < len(lines) and lines[i].strip() == '':
-            i += 1
+skip = False
+for line in lines:
+    if line.strip() == begin:
+        skip = True
         continue
-    out.append(line)
-    i += 1
+    if line.strip() == end:
+        skip = False
+        continue
+    if not skip:
+        out.append(line)
 
 open(path, 'w').write('\n'.join(out).rstrip() + '\n')
-" 2>/dev/null || true
+PYEOF
 
-  # Вставляем новый блок перед финальным catch-all (:443, :80) если есть, иначе в конец
-  python3 -c "
-import re
-text = open('$caddyfile').read()
-block = '\nhttps://$caddy_domain {\n    reverse_proxy ${proxy_host}:${port}\n}\n'
+  # Вставляем новый блок с маркерами перед финальным catch-all (:443/:80) если есть
+  # Домен и proxy_host передаём через аргументы — никакой shell-интерполяции в Python-коде
+  python3 - "$caddyfile" "$caddy_domain" "${proxy_host}:${port}" << 'PYEOF'
+import sys, re
+
+path, domain, upstream = sys.argv[1], sys.argv[2], sys.argv[3]
+text = open(path).read()
+
+block = (
+    "\n# BEGIN linkmus-monitor\n"
+    "https://" + domain + " {\n"
+    "    reverse_proxy " + upstream + "\n"
+    "}\n"
+    "# END linkmus-monitor\n"
+)
+
 m = re.search(r'\n:[0-9]+ \{', text)
 if m:
     text = text[:m.start()] + block + text[m.start():]
 else:
     text = text.rstrip() + '\n' + block
-open('$caddyfile', 'w').write(text)
-"
 
-  # При Caddy в Docker — разрешаем Docker-сетям доступ к порту на хосте
+open(path, 'w').write(text)
+PYEOF
+
+  # При Caddy в Docker — разрешаем Docker-сетям доступ к конкретному порту на хосте
   if [ "$caddy_mode" = "docker" ] && command -v ufw &>/dev/null; then
     ufw allow from 172.16.0.0/12 to any port "$port" comment "linkmus-monitor caddy-docker" >/dev/null 2>&1 || true
     ok "UFW: разрешён доступ из Docker-сети на порт ${port}"
@@ -277,6 +295,69 @@ open('$caddyfile', 'w').write(text)
   echo -e "  Убедитесь что DNS A-запись ${BOLD}${caddy_domain}${RESET} указывает на ${BOLD}${proxy_host}${RESET}"
 }
 
+# Удаляет ТОЛЬКО наш маркированный блок из Caddyfile — чужие блоки не трогает
+caddy_cleanup_block() {
+  local caddyfile=""
+  local caddy_container=""
+  local caddy_mode=""
+  local srv_port=""
+
+  # Читаем порт из systemd-юнита чтобы точно удалить нужное UFW-правило
+  if [ -f /etc/systemd/system/mon-server.service ]; then
+    srv_port=$(grep -o 'PORT=[0-9]*' /etc/systemd/system/mon-server.service | grep -o '[0-9]*' | head -1)
+  fi
+
+  if command -v caddy &>/dev/null; then
+    caddy_mode="local"
+    caddyfile="/etc/caddy/Caddyfile"
+  elif command -v docker &>/dev/null; then
+    caddy_container=$(docker ps --format '{{.Names}}' | grep -i caddy | head -1)
+    if [ -n "$caddy_container" ]; then
+      caddy_mode="docker"
+      caddyfile=$(docker inspect "$caddy_container" \
+        --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}')
+    fi
+  fi
+
+  [ -f "$caddyfile" ] && command -v python3 &>/dev/null || return
+
+  # Удаляем только наш маркированный блок
+  python3 - "$caddyfile" << 'PYEOF'
+import sys
+
+path  = sys.argv[1]
+begin = "# BEGIN linkmus-monitor"
+end   = "# END linkmus-monitor"
+
+text  = open(path).read()
+lines = text.split('\n')
+out   = []
+skip  = False
+for line in lines:
+    if line.strip() == begin:
+        skip = True
+        continue
+    if line.strip() == end:
+        skip = False
+        continue
+    if not skip:
+        out.append(line)
+
+open(path, 'w').write('\n'.join(out).rstrip() + '\n')
+PYEOF
+
+  # Удаляем UFW-правило только для конкретного порта нашего сервера
+  if command -v ufw &>/dev/null && [ -n "$srv_port" ]; then
+    ufw delete allow from 172.16.0.0/12 to any port "$srv_port" >/dev/null 2>&1 || true
+  fi
+
+  if [ "$caddy_mode" = "docker" ] && [ -n "$caddy_container" ]; then
+    docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+  elif [ "$caddy_mode" = "local" ]; then
+    caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy 2>/dev/null || true
+  fi
+}
+
 # ──────────────────────────────────────────────────────────────────────────────
 install_agent() {
   require curl; require systemctl
@@ -291,7 +372,6 @@ install_agent() {
 
   local tmp
   tmp=$(mktemp -d)
-  trap "rm -rf $tmp" EXIT
 
   info "Загрузка агента..."
   curl -fsSL --progress-bar -o "$tmp/mon-agent" "$ASSET_URL"
@@ -301,6 +381,8 @@ install_agent() {
   mkdir -p "$AGENT_DIR"
   install -Dm755 "$tmp/mon-agent" "$AGENT_BIN"
   ok "Бинарник: $AGENT_BIN"
+
+  rm -rf "$tmp"
 
   if [ ! -f "$AGENT_CFG" ]; then
     echo ""
@@ -369,6 +451,9 @@ AGENT_DIR="/opt/mon-agent"
 AGENT_BIN="$AGENT_DIR/mon-agent"
 AGENT_VERSION="$AGENT_DIR/.version"
 
+CADDY_MARKER_BEGIN="# BEGIN linkmus-monitor"
+CADDY_MARKER_END="# END linkmus-monitor"
+
 usage() {
   echo -e "${BOLD}${CYAN}LinkMus Monitor${RESET}"
   echo -e "Использование: ${BOLD}mon <server|agent> <команда>${RESET}"
@@ -384,6 +469,50 @@ usage() {
   echo -e "  ${BOLD}delete${RESET}   Полностью деинсталировать (служба, файлы, конфиг)"
   echo ""
   exit 1
+}
+
+caddy_remove_block() {
+  local caddyfile="" caddy_container="" caddy_mode="" srv_port=""
+
+  [ -f /etc/systemd/system/mon-server.service ] && \
+    srv_port=$(grep -o 'PORT=[0-9]*' /etc/systemd/system/mon-server.service | grep -o '[0-9]*' | head -1)
+
+  if command -v caddy &>/dev/null; then
+    caddy_mode="local"; caddyfile="/etc/caddy/Caddyfile"
+  elif command -v docker &>/dev/null; then
+    caddy_container=$(docker ps --format '{{.Names}}' | grep -i caddy | head -1)
+    [ -n "$caddy_container" ] && {
+      caddy_mode="docker"
+      caddyfile=$(docker inspect "$caddy_container" \
+        --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}')
+    }
+  fi
+
+  [ -f "$caddyfile" ] && command -v python3 &>/dev/null || return
+
+  python3 - "$caddyfile" << 'PYEOF'
+import sys
+path  = sys.argv[1]
+begin = "# BEGIN linkmus-monitor"
+end   = "# END linkmus-monitor"
+lines = open(path).read().split('\n')
+out, skip = [], False
+for line in lines:
+    if line.strip() == begin: skip = True; continue
+    if line.strip() == end:   skip = False; continue
+    if not skip: out.append(line)
+open(path, 'w').write('\n'.join(out).rstrip() + '\n')
+PYEOF
+
+  if command -v ufw &>/dev/null && [ -n "$srv_port" ]; then
+    ufw delete allow from 172.16.0.0/12 to any port "$srv_port" >/dev/null 2>&1 || true
+  fi
+
+  if [ "$caddy_mode" = "docker" ] && [ -n "$caddy_container" ]; then
+    docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+  elif [ "$caddy_mode" = "local" ]; then
+    caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy 2>/dev/null || true
+  fi
 }
 
 do_update() {
@@ -465,51 +594,9 @@ do_update() {
 do_delete() {
   local target="$1"
   [ "$(id -u)" -eq 0 ] || { echo -e "${RED}[ERR]${RESET}  Нужны права root: sudo mon $target delete"; exit 1; }
-  if [ "$target" = "server" ]; then
-    echo -e "${YELLOW}[WARN]${RESET} Будет удалено ВСЁ: бинарник, фронтенд, база данных, конфиг nginx."
-    read -rp "  Подтвердить удаление? [y/N]: " ans </dev/tty
-    [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
-    systemctl stop    mon-server 2>/dev/null || true
-    systemctl disable mon-server 2>/dev/null || true
-    rm -f /etc/systemd/system/mon-server.service
-    systemctl daemon-reload
-    rm -f "$SERVER_BIN"
-    rm -rf "$SERVER_DIR"
-    rm -f /etc/nginx/sites-enabled/linkmus-monitor
-    rm -f /etc/nginx/sites-available/linkmus-monitor
-    command -v nginx &>/dev/null && nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
-    local caddyfile="/etc/caddy/Caddyfile"
-    if [ -f "$caddyfile" ] && command -v python3 &>/dev/null; then
-      python3 -c "
-import re
-text = open('$caddyfile').read()
-text = re.sub(r'(?m)^[^\s#][^\n]*\n\{\n    reverse_proxy localhost:[0-9]+\n\}\n?', '', text)
-open('$caddyfile', 'w').write(text)
-" 2>/dev/null || true
-      command -v caddy &>/dev/null && caddy reload --config "$caddyfile" 2>/dev/null || \
-        systemctl reload caddy 2>/dev/null || true
-    fi
-    [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
-    echo -e "${GREEN}[ OK ]${RESET} Сервер полностью удалён."
-  else
-    echo -e "${YELLOW}[WARN]${RESET} Будет удалено ВСЁ: бинарник, конфиг, директория агента."
-    read -rp "  Подтвердить удаление? [y/N]: " ans </dev/tty
-    [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
-    systemctl stop    mon-agent 2>/dev/null || true
-    systemctl disable mon-agent 2>/dev/null || true
-    rm -f /etc/systemd/system/mon-agent.service
-    systemctl daemon-reload
-    rm -rf "$AGENT_DIR"
-    [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
-    echo -e "${GREEN}[ OK ]${RESET} Агент полностью удалён."
-  fi
-}
 
-do_delete() {
-  local target="$1"
-  [ "$(id -u)" -eq 0 ] || { echo -e "${RED}[ERR]${RESET}  Нужны права root: sudo mon $target delete"; exit 1; }
   if [ "$target" = "server" ]; then
-    echo -e "${YELLOW}[WARN]${RESET} Будет удалено ВСЁ: бинарник, фронтенд, база данных, конфиг nginx."
+    echo -e "${YELLOW}[WARN]${RESET} Будет удалено ВСЁ: бинарник, фронтенд, база данных, служба."
     read -rp "  Подтвердить удаление? [y/N]: " ans </dev/tty
     [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
     systemctl stop    mon-server 2>/dev/null || true
@@ -521,19 +608,10 @@ do_delete() {
     rm -f /etc/nginx/sites-enabled/linkmus-monitor
     rm -f /etc/nginx/sites-available/linkmus-monitor
     command -v nginx &>/dev/null && nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
-    local caddyfile="/etc/caddy/Caddyfile"
-    if [ -f "$caddyfile" ] && command -v python3 &>/dev/null; then
-      python3 -c "
-import re
-text = open('$caddyfile').read()
-text = re.sub(r'(?m)^[^\s#][^\n]*\n\{\n    reverse_proxy localhost:[0-9]+\n\}\n?', '', text)
-open('$caddyfile', 'w').write(text)
-" 2>/dev/null || true
-      command -v caddy &>/dev/null && caddy reload --config "$caddyfile" 2>/dev/null || \
-        systemctl reload caddy 2>/dev/null || true
-    fi
+    caddy_remove_block
     [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
     echo -e "${GREEN}[ OK ]${RESET} Сервер полностью удалён."
+
   else
     echo -e "${YELLOW}[WARN]${RESET} Будет удалено ВСЁ: бинарник, конфиг, директория агента."
     read -rp "  Подтвердить удаление? [y/N]: " ans </dev/tty
@@ -573,73 +651,10 @@ MONEOF
   ok "CLI: mon server|agent start|stop|restart|status|enable|disable|logs|update|delete"
 }
 
-caddy_cleanup_block() {
-  local caddyfile=""
-  local caddy_container=""
-  local caddy_mode=""
-
-  if command -v caddy &>/dev/null; then
-    caddy_mode="local"
-    caddyfile="/etc/caddy/Caddyfile"
-  elif command -v docker &>/dev/null; then
-    caddy_container=$(docker ps --format '{{.Names}}' | grep -i caddy | head -1)
-    if [ -n "$caddy_container" ]; then
-      caddy_mode="docker"
-      caddyfile=$(docker inspect "$caddy_container" \
-        --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}')
-    fi
-  fi
-
-  [ -f "$caddyfile" ] && command -v python3 &>/dev/null || return
-
-  # Удаляем блоки с reverse_proxy на наш порт (любой домен)
-  python3 -c "
-text = open('$caddyfile').read()
-lines = text.split('\n')
-out = []
-i = 0
-while i < len(lines):
-    line = lines[i]
-    # Блок-кандидат: https://... { на одной строке
-    if line.strip().startswith('https://') and '{' in line:
-        # Собираем весь блок
-        block_lines = [line]
-        depth = line.count('{') - line.count('}')
-        j = i + 1
-        while j < len(lines) and depth > 0:
-            block_lines.append(lines[j])
-            depth += lines[j].count('{') - lines[j].count('}')
-            j += 1
-        block_text = '\n'.join(block_lines)
-        # Удаляем только если это простой reverse_proxy блок на наш порт
-        import re
-        if re.search(r'reverse_proxy\s+[^\s]+:[0-9]+\s*$', block_text, re.M) and \
-           len([l for l in block_lines if l.strip() and not l.strip().startswith('#')]) <= 3:
-            i = j
-            if i < len(lines) and lines[i].strip() == '':
-                i += 1
-            continue
-    out.append(line)
-    i += 1
-open('$caddyfile', 'w').write('\n'.join(out).rstrip() + '\n')
-" 2>/dev/null || true
-
-  # Удаляем ufw-правило для Docker если было добавлено
-  if command -v ufw &>/dev/null; then
-    ufw delete allow from 172.16.0.0/12 >/dev/null 2>&1 || true
-  fi
-
-  if [ "$caddy_mode" = "docker" ] && [ -n "$caddy_container" ]; then
-    docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
-  elif [ "$caddy_mode" = "local" ]; then
-    caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy 2>/dev/null || true
-  fi
-}
-
 # ──────────────────────────────────────────────────────────────────────────────
 uninstall_server() {
   echo ""
-  warn "Будет удалено ВСЁ: бинарник, фронтенд, база данных, логи, конфиг nginx."
+  warn "Будет удалено ВСЁ: бинарник, фронтенд, база данных, служба."
   confirm "  Продолжить?" || { info "Отменено."; exit 0; }
 
   systemctl stop    mon-server 2>/dev/null || true
@@ -654,7 +669,6 @@ uninstall_server() {
   rm -f /etc/nginx/sites-available/linkmus-monitor
   command -v nginx &>/dev/null && nginx -t && systemctl reload nginx 2>/dev/null || true
 
-  # Удаляем блок из Caddyfile если он есть
   caddy_cleanup_block
 
   [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon
