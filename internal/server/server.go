@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 )
 
@@ -95,7 +96,11 @@ func requireAuth(next http.HandlerFunc) http.HandlerFunc {
 }
 
 func Run() {
-	dbConn = InitDB("monitor.db")
+	dbPath := os.Getenv("DB_PATH")
+	if dbPath == "" {
+		dbPath = "monitor.db"
+	}
+	dbConn = InitDB(dbPath)
 	defer dbConn.Close()
 
 	StartProber(dbConn)
@@ -126,10 +131,14 @@ func Run() {
 	// Настройки алертов
 	http.HandleFunc("/api/settings/alerts", requireAuth(handleAlertSettings))
 
-	port := ":8080"
-	log.Printf("🚀 Мастер-сервер запущен на порту %s", port)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	addr := ":" + port
+	log.Printf("🚀 Мастер-сервер запущен на порту %s", addr)
 
-	if err := http.ListenAndServe(port, nil); err != nil {
+	if err := http.ListenAndServe(addr, nil); err != nil {
 		log.Fatalf("Ошибка запуска сервера: %v", err)
 	}
 }
