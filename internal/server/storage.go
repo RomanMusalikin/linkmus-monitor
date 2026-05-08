@@ -176,6 +176,18 @@ func MigrateDB(db *sql.DB) {
 		db.Exec(stmt) // игнорируем ошибку — колонка уже существует
 	}
 
+	// Настройки портов сервисов (singleton, id=1)
+	db.Exec(`
+	CREATE TABLE IF NOT EXISTS port_settings (
+		id          INTEGER PRIMARY KEY DEFAULT 1,
+		ssh_port    INTEGER DEFAULT 22,
+		rdp_port    INTEGER DEFAULT 3389,
+		smb_port    INTEGER DEFAULT 445,
+		http_port   INTEGER DEFAULT 80,
+		winrm_port  INTEGER DEFAULT 5985,
+		dns_port    INTEGER DEFAULT 53
+	)`)
+
 	// Индексы: критически важны для производительности при большом числе узлов
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_metrics_node_ts ON metrics(node_name, timestamp)`,

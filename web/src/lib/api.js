@@ -129,6 +129,21 @@ export async function sendTestEmail() {
   }
 }
 
+export async function getPortSettings() {
+  const res = await fetch(`${API_BASE}/settings/ports`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Ошибка получения настроек портов');
+  return res.json();
+}
+
+export async function savePortSettings(settings) {
+  const res = await fetch(`${API_BASE}/settings/ports`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error('Ошибка сохранения настроек портов');
+}
+
 export async function sendTestTelegram() {
   const res = await fetch(`${API_BASE}/settings/alerts/test-telegram`, {
     method: 'POST',

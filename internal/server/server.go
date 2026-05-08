@@ -132,6 +132,9 @@ func Run() {
 	http.HandleFunc("/api/settings/alerts", requireAuth(handleAlertSettings))
 	http.HandleFunc("/api/settings/alerts/test-telegram", requireAuth(handleTestTelegram))
 
+	// Настройки портов сервисов
+	http.HandleFunc("/api/settings/ports", requireAuth(handlePortSettings))
+
 	// Фронтенд — статические файлы с SPA-fallback
 	webPath := os.Getenv("WEB_PATH")
 	if webPath == "" {
@@ -379,6 +382,31 @@ func handleAlertSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// handlePortSettings — GET/PUT /api/settings/ports
+func handlePortSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	corsHeaders(w)
+	switch r.Method {
+	case http.MethodOptions:
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodGet:
+		json.NewEncoder(w).Encode(GetPortSettings(dbConn))
+	case http.MethodPut:
+		var s PortSettings
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
+			return
+		}
+		if err := SavePortSettings(dbConn, s); err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 	}

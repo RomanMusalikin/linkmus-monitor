@@ -5,7 +5,7 @@ import {
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
   Wifi, MemoryStick, Trash2, Download, Pencil, Check, X
 } from 'lucide-react';
-import { deleteNode, fetchNodes, fetchNodeHistory, renameNode } from '../lib/api';
+import { deleteNode, fetchNodes, fetchNodeHistory, renameNode, getPortSettings } from '../lib/api';
 import { useNodesContext } from '../context/NodesContext';
 import { useVersion } from '../hooks/useVersion';
 import CpuGauge from '../components/charts/CpuGauge';
@@ -236,6 +236,11 @@ export default function NodeDetail() {
   const exportCloseTimer = useRef(null);
   const [liveBuffer, setLiveBuffer] = useState([]);
   const liveBufferSeeded = useRef(false);
+  const [portSettings, setPortSettings] = useState({ sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, winrmPort: 5985, dnsPort: 53 });
+
+  useEffect(() => {
+    getPortSettings().then(setPortSettings).catch(() => {});
+  }, []);
 
   // Сбрасываем весь локальный стейт при смене узла
   useEffect(() => {
@@ -1111,16 +1116,16 @@ export default function NodeDetail() {
         {/* ── Сервисы ── */}
         <Card title="Сервисы" icon={Shield} iconColor="text-emerald-400">
           <div className="space-y-2">
-            <ServiceBadge label="SSH" port={22} active={node.sshReachable} ms={node.sshMs} />
+            <ServiceBadge label="SSH" port={portSettings.sshPort} active={node.sshReachable} ms={node.sshMs} />
             {isWindows && (
               <>
-                <ServiceBadge label="Remote Desktop (RDP)" port={3389} active={node.rdpReachable} ms={node.rdpMs} />
-                <ServiceBadge label="File Sharing (SMB)" port={445} active={node.smbReachable} ms={node.smbMs} />
-                <ServiceBadge label="WinRM" port={5985} active={node.winrmReachable} ms={node.winrmMs} />
+                <ServiceBadge label="Remote Desktop (RDP)" port={portSettings.rdpPort} active={node.rdpReachable} ms={node.rdpMs} />
+                <ServiceBadge label="File Sharing (SMB)" port={portSettings.smbPort} active={node.smbReachable} ms={node.smbMs} />
+                <ServiceBadge label="WinRM" port={portSettings.winrmPort} active={node.winrmReachable} ms={node.winrmMs} />
               </>
             )}
-            <ServiceBadge label="HTTP" port={80} active={node.httpReachable} ms={node.httpMs} />
-            <ServiceBadge label="DNS" port={53} active={node.dnsReachable} ms={node.dnsMs} />
+            <ServiceBadge label="HTTP" port={portSettings.httpPort} active={node.httpReachable} ms={node.httpMs} />
+            <ServiceBadge label="DNS" port={portSettings.dnsPort} active={node.dnsReachable} ms={node.dnsMs} />
           </div>
           {(node.tcpTotal || 0) > 0 && (
             <div className="mt-4 pt-4 border-t border-slate-700/40 space-y-1">

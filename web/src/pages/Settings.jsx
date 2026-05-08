@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash } from 'lucide-react';
-import { getAlertSettings, saveAlertSettings, sendTestEmail, sendTestTelegram } from '../lib/api';
+import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield } from 'lucide-react';
+import { getAlertSettings, saveAlertSettings, sendTestEmail, sendTestTelegram, getPortSettings, savePortSettings } from '../lib/api';
 
 function Field({ label, hint, children }) {
   return (
@@ -53,6 +53,7 @@ function Toggle({ enabled, onToggle, labelOn, labelOff, hint }) {
 
 const TABS = [
   { id: 'notifications', label: 'Уведомления', icon: Bell },
+  { id: 'ports', label: 'Порты сервисов', icon: Shield },
 ];
 
 const defaultSettings = {
@@ -60,6 +61,10 @@ const defaultSettings = {
   fromEmail: '', toEmail: '',
   cpuThreshold: 0, ramThreshold: 0, cooldownMin: 30, enabled: false,
   tgBotToken: '', tgChatID: '', tgTopicID: 0, tgEnabled: false,
+};
+
+const defaultPortSettings = {
+  sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, winrmPort: 5985, dnsPort: 53,
 };
 
 export default function Settings() {
@@ -73,11 +78,18 @@ export default function Settings() {
   const [testMsg, setTestMsg] = useState('');
   const [testTgMsg, setTestTgMsg] = useState('');
 
+  const [ports, setPorts] = useState(defaultPortSettings);
+  const [portsSaving, setPortsSaving] = useState(false);
+  const [portsSaveMsg, setPortsSaveMsg] = useState('');
+
   useEffect(() => {
     getAlertSettings()
       .then(data => setS({ ...defaultSettings, ...data }))
       .catch(() => {})
       .finally(() => setLoading(false));
+    getPortSettings()
+      .then(data => setPorts({ ...defaultPortSettings, ...data }))
+      .catch(() => {});
   }, []);
 
   const upd = field => e =>
@@ -88,6 +100,26 @@ export default function Settings() {
     if (raw === '') { setS(prev => ({ ...prev, [field]: '' })); return; }
     setS(prev => ({ ...prev, [field]: Math.min(max, Math.max(min, parseInt(raw, 10))) }));
   };
+
+  const updPort = field => e => {
+    const raw = e.target.value.replace(/[^0-9]/g, '');
+    if (raw === '') { setPorts(prev => ({ ...prev, [field]: '' })); return; }
+    setPorts(prev => ({ ...prev, [field]: Math.min(65535, Math.max(1, parseInt(raw, 10))) }));
+  };
+
+  async function handlePortsSave(e) {
+    e.preventDefault();
+    setPortsSaving(true); setPortsSaveMsg('');
+    try {
+      await savePortSettings(ports);
+      setPortsSaveMsg('✓ Сохранено');
+      setTimeout(() => setPortsSaveMsg(''), 2500);
+    } catch (err) {
+      setPortsSaveMsg('Ошибка: ' + err.message);
+    } finally {
+      setPortsSaving(false);
+    }
+  }
 
   async function handleSave(e) {
     e.preventDefault();
@@ -155,6 +187,54 @@ export default function Settings() {
           </button>
         ))}
       </div>
+
+      {tab === 'ports' && (
+        <form onSubmit={handlePortsSave} className="space-y-5">
+          <Section title="Порты сервисов" icon={Shield} iconColor="text-emerald-400">
+            <p className="text-xs text-slate-500 mb-4">
+              Порты используются для TCP-проб в карточке узла. Измените, если сервисы работают на нестандартных портах.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Field label="SSH" hint="По умолчанию: 22">
+                <Input type="text" inputMode="numeric" value={ports.sshPort}
+                  onChange={updPort('sshPort')} placeholder="22" />
+              </Field>
+              <Field label="HTTP" hint="По умолчанию: 80">
+                <Input type="text" inputMode="numeric" value={ports.httpPort}
+                  onChange={updPort('httpPort')} placeholder="80" />
+              </Field>
+              <Field label="Remote Desktop (RDP)" hint="По умолчанию: 3389">
+                <Input type="text" inputMode="numeric" value={ports.rdpPort}
+                  onChange={updPort('rdpPort')} placeholder="3389" />
+              </Field>
+              <Field label="File Sharing (SMB)" hint="По умолчанию: 445">
+                <Input type="text" inputMode="numeric" value={ports.smbPort}
+                  onChange={updPort('smbPort')} placeholder="445" />
+              </Field>
+              <Field label="WinRM" hint="По умолчанию: 5985">
+                <Input type="text" inputMode="numeric" value={ports.winrmPort}
+                  onChange={updPort('winrmPort')} placeholder="5985" />
+              </Field>
+              <Field label="DNS" hint="По умолчанию: 53">
+                <Input type="text" inputMode="numeric" value={ports.dnsPort}
+                  onChange={updPort('dnsPort')} placeholder="53" />
+              </Field>
+            </div>
+          </Section>
+
+          <div className="flex items-center gap-4">
+            <button type="submit" disabled={portsSaving}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30
+                hover:bg-blue-500/30 hover:text-blue-300 transition-all font-medium text-sm disabled:opacity-50">
+              <Save className="w-4 h-4" />
+              {portsSaving ? 'Сохранение...' : 'Сохранить'}
+            </button>
+            {portsSaveMsg && (
+              <span className={`text-sm ${portsSaveMsg.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>{portsSaveMsg}</span>
+            )}
+          </div>
+        </form>
+      )}
 
       {tab === 'notifications' && (
         <form onSubmit={handleSave} className="space-y-5">

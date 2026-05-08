@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"net"
 	"net/http"
 	"sync"
@@ -58,10 +59,10 @@ func probeTCP(host, port string) (bool, float64) {
 	return true, ms
 }
 
-func probeHTTP(ip string) (bool, float64) {
+func probeHTTP(ip string, port int) (bool, float64) {
 	client := &http.Client{Timeout: 2 * time.Second}
 	start := time.Now()
-	resp, err := client.Get("http://" + ip + "/")
+	resp, err := client.Get(fmt.Sprintf("http://%s:%d/", ip, port))
 	ms := float64(time.Since(start).Nanoseconds()) / 1e6
 	if err != nil {
 		return false, 0
@@ -70,19 +71,19 @@ func probeHTTP(ip string) (bool, float64) {
 	return resp.StatusCode < 500, ms
 }
 
-func probeDNS(ip string) (bool, float64) {
+func probeDNS(ip string, port int) (bool, float64) {
+	portStr := fmt.Sprintf("%d", port)
 	resolver := &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "udp", net.JoinHostPort(ip, "53"))
+			return (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "udp", net.JoinHostPort(ip, portStr))
 		},
 	}
 	start := time.Now()
 	_, err := resolver.LookupHost(context.Background(), "srv-mon-01.local")
 	ms := float64(time.Since(start).Nanoseconds()) / 1e6
 	if err != nil {
-		// Пробуем просто TCP:53 как fallback
-		ok, ms2 := probeTCP(ip, "53")
+		ok, ms2 := probeTCP(ip, portStr)
 		return ok, ms2
 	}
 	return true, ms
@@ -102,18 +103,20 @@ func runProbes(db *sql.DB) {
 	}
 	rows.Close()
 
+	ports := GetPortSettings(db)
+
 	var wg sync.WaitGroup
 	for _, ip := range ips {
 		wg.Add(1)
 		go func(ip string) {
 			defer wg.Done()
 			result := ProbeResult{}
-			result.SSHReachable, result.SSHMs = probeTCP(ip, "22")
-			result.RDPReachable, result.RDPMs = probeTCP(ip, "3389")
-			result.SMBReachable, result.SMBMs = probeTCP(ip, "445")
-			result.HTTPReachable, result.HTTPMs = probeHTTP(ip)
-			result.WinRMReachable, result.WinRMMs = probeTCP(ip, "5985")
-			result.DNSReachable, result.DNSMs = probeDNS(ip)
+			result.SSHReachable, result.SSHMs = probeTCP(ip, fmt.Sprintf("%d", ports.SSHPort))
+			result.RDPReachable, result.RDPMs = probeTCP(ip, fmt.Sprintf("%d", ports.RDPPort))
+			result.SMBReachable, result.SMBMs = probeTCP(ip, fmt.Sprintf("%d", ports.SMBPort))
+			result.HTTPReachable, result.HTTPMs = probeHTTP(ip, ports.HTTPPort)
+			result.WinRMReachable, result.WinRMMs = probeTCP(ip, fmt.Sprintf("%d", ports.WinRMPort))
+			result.DNSReachable, result.DNSMs = probeDNS(ip, ports.DNSPort)
 
 			probeCacheMu.Lock()
 			probeCache[ip] = result
