@@ -91,6 +91,10 @@ install_server() {
   read -rp "  Порт сервера [8080]: " srv_port </dev/tty
   srv_port="${srv_port:-8080}"
   validate_port "$srv_port"
+  if ss -tlnp 2>/dev/null | grep -q ":${srv_port} " || netstat -tlnp 2>/dev/null | grep -q ":${srv_port} "; then
+    warn "Порт ${srv_port} уже занят другим процессом!"
+    confirm "  Продолжить всё равно?" || die "Установка отменена. Выберите другой порт."
+  fi
 
   local tmp
   tmp=$(mktemp -d)
@@ -171,11 +175,16 @@ setup_nginx() {
     warn "Nginx не найден — установите его вручную"
     return
   fi
+
+  read -rp "  Домен для Nginx (например monitor.example.com): " nginx_domain </dev/tty
+  [ -n "$nginx_domain" ] || { warn "Домен не указан — Nginx не настроен"; return; }
+  validate_domain "$nginx_domain"
+
   if [ ! -f /etc/nginx/sites-available/linkmus-monitor ]; then
     cat > /etc/nginx/sites-available/linkmus-monitor << NGINX
 server {
     listen 80;
-    server_name _;
+    server_name ${nginx_domain};
     root $SERVER_WEB;
     index index.html;
     location /api/ {
@@ -187,13 +196,17 @@ server {
 }
 NGINX
     ln -sf /etc/nginx/sites-available/linkmus-monitor /etc/nginx/sites-enabled/
-    rm -f /etc/nginx/sites-enabled/default
+    # Удаляем дефолтный сайт только если он не несёт полезной нагрузки
+    if [ -f /etc/nginx/sites-enabled/default ]; then
+      warn "Обнаружен дефолтный сайт Nginx (/etc/nginx/sites-enabled/default)"
+      confirm "  Отключить его? (рекомендуется если он пустой)" && rm -f /etc/nginx/sites-enabled/default || true
+    fi
   else
     sed -i "s|proxy_pass http://127.0.0.1:[0-9]*|proxy_pass http://127.0.0.1:${port}|g" \
       /etc/nginx/sites-available/linkmus-monitor
   fi
   nginx -t && systemctl reload nginx
-  ok "Nginx настроен"
+  ok "Nginx настроен: http://${nginx_domain}"
 }
 
 setup_caddy() {
@@ -229,6 +242,11 @@ setup_caddy() {
   fi
 
   info "Caddy обнаружен (${caddy_mode}), Caddyfile: ${caddyfile}"
+
+  # Создаём резервную копию Caddyfile перед любыми изменениями
+  cp "$caddyfile" "${caddyfile}.bak-linkmus-$(date +%Y%m%d%H%M%S)" && \
+    info "Резервная копия Caddyfile сохранена: ${caddyfile}.bak-linkmus-*" || \
+    warn "Не удалось создать резервную копию Caddyfile"
 
   read -rp "  Домен (например monitor.example.com): " caddy_domain </dev/tty
   [ -n "$caddy_domain" ] || { warn "Домен не указан — Caddy не настроен"; return; }
@@ -284,10 +302,15 @@ else:
 open(path, 'w').write(text)
 PYEOF
 
-  # При Caddy в Docker — разрешаем Docker-сетям доступ к конкретному порту на хосте
-  if [ "$caddy_mode" = "docker" ] && command -v ufw &>/dev/null; then
+  # При Caddy в Docker — разрешаем Docker-сетям доступ к конкретному порту на хосте.
+  # ВАЖНО: ufw allow пересобирает iptables и сносит цепочки Docker (MASQUERADE и др.),
+  # поэтому после изменения UFW перезапускаем Docker чтобы он восстановил свои правила.
+  if [ "$caddy_mode" = "docker" ] && command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
     ufw allow from 172.16.0.0/12 to any port "$port" comment "linkmus-monitor caddy-docker" >/dev/null 2>&1 || true
     ok "UFW: разрешён доступ из Docker-сети на порт ${port}"
+    warn "UFW изменён — перезапускаю Docker для восстановления его iptables-правил..."
+    systemctl restart docker >/dev/null 2>&1 || true
+    ok "Docker перезапущен"
   fi
 
   # Перезагружаем Caddy
