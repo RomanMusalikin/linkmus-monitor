@@ -102,6 +102,7 @@ Type=simple
 WorkingDirectory=$SERVER_DATA
 Environment=PORT=$srv_port
 Environment=DB_PATH=$SERVER_DATA/monitor.db
+Environment=WEB_PATH=$SERVER_WEB
 ExecStart=$SERVER_BIN
 Restart=always
 RestartSec=5

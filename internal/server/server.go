@@ -131,6 +131,23 @@ func Run() {
 	// Настройки алертов
 	http.HandleFunc("/api/settings/alerts", requireAuth(handleAlertSettings))
 
+	// Фронтенд — статические файлы с SPA-fallback
+	webPath := os.Getenv("WEB_PATH")
+	if webPath == "" {
+		webPath = "/opt/linkmus-monitor/web"
+	}
+	fs := http.FileServer(http.Dir(webPath))
+	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// Если файл существует — отдаём его, иначе index.html (SPA)
+		if r.URL.Path != "/" {
+			if _, err := os.Stat(webPath + r.URL.Path); err == nil {
+				fs.ServeHTTP(w, r)
+				return
+			}
+		}
+		http.ServeFile(w, r, webPath+"/index.html")
+	})
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
