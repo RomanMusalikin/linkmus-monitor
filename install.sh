@@ -171,38 +171,78 @@ NGINX
 
 setup_caddy() {
   local port="$1"
-  if ! command -v caddy &>/dev/null; then
-    warn "Caddy не найден — установите его вручную"
+
+  # Определяем режим: локальный Caddy или в Docker
+  local caddy_mode=""
+  local caddyfile=""
+  local caddy_container=""
+  local proxy_host=""
+
+  if command -v caddy &>/dev/null; then
+    caddy_mode="local"
+    caddyfile="/etc/caddy/Caddyfile"
+    proxy_host="localhost"
+  elif command -v docker &>/dev/null; then
+    caddy_container=$(docker ps --format '{{.Names}}' | grep -i caddy | head -1)
+    if [ -n "$caddy_container" ]; then
+      caddy_mode="docker"
+      # Получаем путь к Caddyfile на хосте из монтирований контейнера
+      caddyfile=$(docker inspect "$caddy_container" \
+        --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}')
+      # Caddy в Docker не имеет доступа к localhost хоста — используем внешний IP
+      proxy_host=$(hostname -I | awk '{print $1}')
+    fi
+  fi
+
+  if [ -z "$caddy_mode" ]; then
+    warn "Caddy не найден (ни локально, ни в Docker) — настройте прокси вручную"
     return
   fi
+
+  if [ -z "$caddyfile" ] || [ ! -f "$caddyfile" ]; then
+    warn "Caddyfile не найден — настройте прокси вручную"
+    return
+  fi
+
+  info "Caddy обнаружен (${caddy_mode}), Caddyfile: ${caddyfile}"
+
   read -rp "  Домен (например monitor.example.com): " caddy_domain </dev/tty
   [ -n "$caddy_domain" ] || { warn "Домен не указан — Caddy не настроен"; return; }
 
-  local caddyfile="/etc/caddy/Caddyfile"
-  local block
-  block=$(cat << CADDY
-
-${caddy_domain} {
-    reverse_proxy localhost:${port}
-}
-CADDY
-)
-
-  # Удаляем старый блок для этого домена если есть, затем добавляем новый
-  if grep -q "^${caddy_domain}" "$caddyfile" 2>/dev/null; then
-    # Удаляем старый блок (домен + следующий {...})
+  # Удаляем старый блок для этого домена если есть
+  if grep -q "^https\?://${caddy_domain}" "$caddyfile" 2>/dev/null; then
     python3 -c "
-import re, sys
+import re
 text = open('$caddyfile').read()
-text = re.sub(r'(?m)^${caddy_domain}\s*\{[^}]*\}\n?', '', text)
-open('$caddyfile', 'w').write(text)
-"
+text = re.sub(r'(?m)^https?://${caddy_domain}\s*\{{[^}}]*\}}\n?', '', text)
+open('$caddyfile', 'w').write(text.rstrip() + '\n')
+" 2>/dev/null || true
   fi
 
-  echo "$block" >> "$caddyfile"
-  caddy fmt --overwrite "$caddyfile" 2>/dev/null || true
-  caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy
+  # Вставляем новый блок перед последним catch-all блоком (если есть), иначе в конец
+  python3 -c "
+import re
+text = open('$caddyfile').read()
+block = '\nhttps://${caddy_domain} {\n    reverse_proxy ${proxy_host}:${port}\n}\n'
+# Вставляем перед финальным блоком вида ':443 {' или ':80 {' если есть
+m = re.search(r'\n:[0-9]+ \{', text)
+if m:
+    text = text[:m.start()] + block + text[m.start():]
+else:
+    text = text.rstrip() + '\n' + block
+open('$caddyfile', 'w').write(text)
+"
+
+  # Перезагружаем Caddy
+  if [ "$caddy_mode" = "docker" ]; then
+    docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile
+  else
+    caddy fmt --overwrite "$caddyfile" 2>/dev/null || true
+    caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy
+  fi
+
   ok "Caddy настроен: https://${caddy_domain}"
+  echo -e "  Убедитесь что DNS A-запись ${BOLD}${caddy_domain}${RESET} указывает на ${BOLD}${proxy_host}${RESET}"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -501,6 +541,39 @@ MONEOF
   ok "CLI: mon server|agent start|stop|restart|status|enable|disable|logs|update|delete"
 }
 
+caddy_cleanup_block() {
+  local caddyfile=""
+  local caddy_container=""
+  local caddy_mode=""
+
+  if command -v caddy &>/dev/null; then
+    caddy_mode="local"
+    caddyfile="/etc/caddy/Caddyfile"
+  elif command -v docker &>/dev/null; then
+    caddy_container=$(docker ps --format '{{.Names}}' | grep -i caddy | head -1)
+    if [ -n "$caddy_container" ]; then
+      caddy_mode="docker"
+      caddyfile=$(docker inspect "$caddy_container" \
+        --format '{{range .Mounts}}{{if eq .Destination "/etc/caddy/Caddyfile"}}{{.Source}}{{end}}{{end}}')
+    fi
+  fi
+
+  [ -f "$caddyfile" ] && command -v python3 &>/dev/null || return
+
+  python3 -c "
+import re
+text = open('$caddyfile').read()
+text = re.sub(r'\nhttps?://[^\s{]+\s*\{\n    reverse_proxy [^\n]+:[0-9]+\n\}\n', '\n', text)
+open('$caddyfile', 'w').write(text)
+" 2>/dev/null || true
+
+  if [ "$caddy_mode" = "docker" ] && [ -n "$caddy_container" ]; then
+    docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+  elif [ "$caddy_mode" = "local" ]; then
+    caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy 2>/dev/null || true
+  fi
+}
+
 # ──────────────────────────────────────────────────────────────────────────────
 uninstall_server() {
   echo ""
@@ -520,17 +593,7 @@ uninstall_server() {
   command -v nginx &>/dev/null && nginx -t && systemctl reload nginx 2>/dev/null || true
 
   # Удаляем блок из Caddyfile если он есть
-  local caddyfile="/etc/caddy/Caddyfile"
-  if [ -f "$caddyfile" ] && command -v python3 &>/dev/null; then
-    python3 -c "
-import re
-text = open('$caddyfile').read()
-text = re.sub(r'(?m)^[^\s#][^\n]*\n\{\n    reverse_proxy localhost:[0-9]+\n\}\n?', '', text)
-open('$caddyfile', 'w').write(text)
-" 2>/dev/null || true
-    command -v caddy &>/dev/null && caddy reload --config "$caddyfile" 2>/dev/null || \
-      systemctl reload caddy 2>/dev/null || true
-  fi
+  caddy_cleanup_block
 
   [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon
 
