@@ -210,22 +210,47 @@ setup_caddy() {
   read -rp "  Домен (например monitor.example.com): " caddy_domain </dev/tty
   [ -n "$caddy_domain" ] || { warn "Домен не указан — Caddy не настроен"; return; }
 
-  # Удаляем старый блок для этого домена если есть
-  if grep -q "^https\?://${caddy_domain}" "$caddyfile" 2>/dev/null; then
-    python3 -c "
-import re
-text = open('$caddyfile').read()
-text = re.sub(r'(?m)^https?://${caddy_domain}\s*\{{[^}}]*\}}\n?', '', text)
-open('$caddyfile', 'w').write(text.rstrip() + '\n')
-" 2>/dev/null || true
-  fi
+  # Удаляем все существующие блоки для этого домена
+  python3 -c "
+import re, sys
 
-  # Вставляем новый блок перед последним catch-all блоком (если есть), иначе в конец
+domain = 'https://$caddy_domain'
+path = '$caddyfile'
+text = open(path).read()
+
+# Удаляем блок: ищем строку с доменом и парсим скобки
+result = []
+i = 0
+lines = text.split('\n')
+skip_until_close = False
+depth = 0
+
+out = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    if line.strip().startswith(domain) and '{' in line:
+        # Пропускаем этот блок целиком
+        depth = line.count('{') - line.count('}')
+        i += 1
+        while i < len(lines) and depth > 0:
+            depth += lines[i].count('{') - lines[i].count('}')
+            i += 1
+        # Пропускаем пустую строку после блока если есть
+        if i < len(lines) and lines[i].strip() == '':
+            i += 1
+        continue
+    out.append(line)
+    i += 1
+
+open(path, 'w').write('\n'.join(out).rstrip() + '\n')
+" 2>/dev/null || true
+
+  # Вставляем новый блок перед финальным catch-all (:443, :80) если есть, иначе в конец
   python3 -c "
 import re
 text = open('$caddyfile').read()
-block = '\nhttps://${caddy_domain} {\n    reverse_proxy ${proxy_host}:${port}\n}\n'
-# Вставляем перед финальным блоком вида ':443 {' или ':80 {' если есть
+block = '\nhttps://$caddy_domain {\n    reverse_proxy ${proxy_host}:${port}\n}\n'
 m = re.search(r'\n:[0-9]+ \{', text)
 if m:
     text = text[:m.start()] + block + text[m.start():]
@@ -233,6 +258,12 @@ else:
     text = text.rstrip() + '\n' + block
 open('$caddyfile', 'w').write(text)
 "
+
+  # При Caddy в Docker — разрешаем Docker-сетям доступ к порту на хосте
+  if [ "$caddy_mode" = "docker" ] && command -v ufw &>/dev/null; then
+    ufw allow from 172.16.0.0/12 to any port "$port" comment "linkmus-monitor caddy-docker" >/dev/null 2>&1 || true
+    ok "UFW: разрешён доступ из Docker-сети на порт ${port}"
+  fi
 
   # Перезагружаем Caddy
   if [ "$caddy_mode" = "docker" ]; then
@@ -561,12 +592,42 @@ caddy_cleanup_block() {
 
   [ -f "$caddyfile" ] && command -v python3 &>/dev/null || return
 
+  # Удаляем блоки с reverse_proxy на наш порт (любой домен)
   python3 -c "
-import re
 text = open('$caddyfile').read()
-text = re.sub(r'\nhttps?://[^\s{]+\s*\{\n    reverse_proxy [^\n]+:[0-9]+\n\}\n', '\n', text)
-open('$caddyfile', 'w').write(text)
+lines = text.split('\n')
+out = []
+i = 0
+while i < len(lines):
+    line = lines[i]
+    # Блок-кандидат: https://... { на одной строке
+    if line.strip().startswith('https://') and '{' in line:
+        # Собираем весь блок
+        block_lines = [line]
+        depth = line.count('{') - line.count('}')
+        j = i + 1
+        while j < len(lines) and depth > 0:
+            block_lines.append(lines[j])
+            depth += lines[j].count('{') - lines[j].count('}')
+            j += 1
+        block_text = '\n'.join(block_lines)
+        # Удаляем только если это простой reverse_proxy блок на наш порт
+        import re
+        if re.search(r'reverse_proxy\s+[^\s]+:[0-9]+\s*$', block_text, re.M) and \
+           len([l for l in block_lines if l.strip() and not l.strip().startswith('#')]) <= 3:
+            i = j
+            if i < len(lines) and lines[i].strip() == '':
+                i += 1
+            continue
+    out.append(line)
+    i += 1
+open('$caddyfile', 'w').write('\n'.join(out).rstrip() + '\n')
 " 2>/dev/null || true
+
+  # Удаляем ufw-правило для Docker если было добавлено
+  if command -v ufw &>/dev/null; then
+    ufw delete allow from 172.16.0.0/12 >/dev/null 2>&1 || true
+  fi
 
   if [ "$caddy_mode" = "docker" ] && [ -n "$caddy_container" ]; then
     docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
