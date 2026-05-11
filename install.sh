@@ -253,28 +253,44 @@ setup_caddy() {
   validate_domain "$caddy_domain"
 
   # Удаляем только наш маркированный блок — передаём путь через аргумент, не интерполяцию
-  python3 - "$caddyfile" << 'PYEOF'
-import sys
+  # Pass domain as arg to avoid shell injection; removes our marked block AND any bare
+  # site block for the same domain to prevent "ambiguous site definition" on re-install.
+  python3 - "$caddyfile" "$caddy_domain" << 'PYEOF'
+import sys, re
 
-path = sys.argv[1]
-begin = "# BEGIN linkmus-monitor"
-end   = "# END linkmus-monitor"
+path   = sys.argv[1]
+domain = sys.argv[2]
+begin  = "# BEGIN linkmus-monitor"
+end    = "# END linkmus-monitor"
 
 text = open(path).read()
-lines = text.split('\n')
-out = []
-skip = False
-for line in lines:
-    if line.strip() == begin:
-        skip = True
-        continue
-    if line.strip() == end:
-        skip = False
-        continue
-    if not skip:
-        out.append(line)
 
-open(path, 'w').write('\n'.join(out).rstrip() + '\n')
+# 1. Remove our marker block
+lines = text.split('\n')
+out, skip = [], False
+for line in lines:
+    if line.strip() == begin:  skip = True;  continue
+    if line.strip() == end:    skip = False; continue
+    if not skip: out.append(line)
+text = '\n'.join(out)
+
+# 2. Remove any bare site block for the same domain (brace-balanced)
+pattern = re.compile(
+    r'\n?' + re.escape('https://' + domain) + r'\s*\{',
+    re.IGNORECASE
+)
+m = pattern.search(text)
+if m:
+    depth, i = 0, m.start()
+    for j in range(m.start(), len(text)):
+        if text[j] == '{': depth += 1
+        elif text[j] == '}':
+            depth -= 1
+            if depth == 0:
+                text = text[:m.start()].rstrip() + '\n' + text[j+1:].lstrip('\n')
+                break
+
+open(path, 'w').write(text.rstrip() + '\n')
 PYEOF
 
   # Вставляем новый блок с маркерами перед финальным catch-all (:443/:80) если есть
