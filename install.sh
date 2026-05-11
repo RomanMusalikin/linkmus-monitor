@@ -243,18 +243,25 @@ setup_caddy() {
 
   info "Caddy обнаружен (${caddy_mode}), Caddyfile: ${caddyfile}"
 
-  # Создаём резервную копию Caddyfile перед любыми изменениями
-  cp "$caddyfile" "${caddyfile}.bak-linkmus-$(date +%Y%m%d%H%M%S)" && \
-    info "Резервная копия Caddyfile сохранена: ${caddyfile}.bak-linkmus-*" || \
-    warn "Не удалось создать резервную копию Caddyfile"
+  # Бэкап Caddyfile — сохраняем путь для автооткатa
+  local caddy_backup="${caddyfile}.bak-linkmus-$(date +%Y%m%d%H%M%S)"
+  cp "$caddyfile" "$caddy_backup" && \
+    info "Резервная копия: ${caddy_backup}" || \
+    { warn "Не удалось создать резервную копию — прерываю настройку Caddy"; return; }
+
+  # Функция отката: восстанавливает Caddyfile и завершает установку с ошибкой
+  caddy_rollback() {
+    warn "Откатываю Caddyfile к резервной копии..."
+    cp "$caddy_backup" "$caddyfile"
+    die "Caddyfile восстановлен. Прокси не настроен — проверьте конфиг вручную."
+  }
 
   read -rp "  Домен (например monitor.example.com): " caddy_domain </dev/tty
   [ -n "$caddy_domain" ] || { warn "Домен не указан — Caddy не настроен"; return; }
   validate_domain "$caddy_domain"
 
-  # Удаляем только наш маркированный блок — передаём путь через аргумент, не интерполяцию
-  # Pass domain as arg to avoid shell injection; removes our marked block AND any bare
-  # site block for the same domain to prevent "ambiguous site definition" on re-install.
+  # Удаляем наш маркерный блок и любой bare-блок того же домена
+  # (предотвращает "ambiguous site definition" при повторной установке)
   python3 - "$caddyfile" "$caddy_domain" << 'PYEOF'
 import sys, re
 
@@ -281,7 +288,7 @@ pattern = re.compile(
 )
 m = pattern.search(text)
 if m:
-    depth, i = 0, m.start()
+    depth = 0
     for j in range(m.start(), len(text)):
         if text[j] == '{': depth += 1
         elif text[j] == '}':
@@ -293,8 +300,7 @@ if m:
 open(path, 'w').write(text.rstrip() + '\n')
 PYEOF
 
-  # Вставляем новый блок с маркерами перед финальным catch-all (:443/:80) если есть
-  # Домен и proxy_host передаём через аргументы — никакой shell-интерполяции в Python-коде
+  # Вставляем новый блок с маркерами
   python3 - "$caddyfile" "$caddy_domain" "${proxy_host}:${port}" << 'PYEOF'
 import sys, re
 
@@ -318,7 +324,21 @@ else:
 open(path, 'w').write(text)
 PYEOF
 
-  # При Caddy в Docker — разрешаем Docker-сетям доступ к конкретному порту на хосте.
+  # Валидируем конфиг ДО любых изменений в UFW/Docker.
+  # Если невалиден — автоматически откатываем Caddyfile.
+  info "Проверяю конфиг Caddy..."
+  if [ "$caddy_mode" = "docker" ]; then
+    if ! docker exec "$caddy_container" caddy validate --config /etc/caddy/Caddyfile 2>/dev/null; then
+      caddy_rollback
+    fi
+  else
+    if ! caddy validate --config "$caddyfile" 2>/dev/null; then
+      caddy_rollback
+    fi
+  fi
+  ok "Конфиг Caddy валиден"
+
+  # При Caddy в Docker — разрешаем Docker-сетям доступ к порту на хосте.
   # ВАЖНО: ufw allow пересобирает iptables и сносит цепочки Docker (MASQUERADE и др.),
   # поэтому после изменения UFW перезапускаем Docker чтобы он восстановил свои правила.
   local docker_restarted=false
@@ -331,9 +351,8 @@ PYEOF
     ok "Docker перезапущен"
   fi
 
-  # Перезагружаем Caddy
+  # Применяем конфиг (уже проверен — reload не должен упасть)
   if [ "$caddy_mode" = "docker" ]; then
-    # After docker restart the container takes a few seconds to come back up — wait for it
     if [ "$docker_restarted" = true ]; then
       local i=0
       info "Ожидаю запуска контейнера Caddy..."
@@ -342,7 +361,7 @@ PYEOF
       done
     fi
     docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || \
-      warn "caddy reload не сработал — Caddy подхватит новый конфиг при следующем старте контейнера"
+      warn "caddy reload не ответил — Caddy подхватит конфиг при следующем старте"
   else
     caddy fmt --overwrite "$caddyfile" 2>/dev/null || true
     caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy
