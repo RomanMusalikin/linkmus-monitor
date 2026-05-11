@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard';
 import NodeDetail from './pages/NodeDetail';
 import LoginPage from './pages/LoginPage';
 import Settings from './pages/Settings';
+import Reports from './pages/Reports';
 import Header from './components/layout/Header';
 import Sidebar from './components/layout/Sidebar';
 import { useNodes } from './hooks/useNodes';
@@ -32,6 +33,7 @@ function AppShell({ onLogout }) {
             <Route path="/" element={<Dashboard />} />
             <Route path="/node/:nodeId" element={<NodeDetail />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/reports" element={<Reports />} />
           </Routes>
         </main>
       </div>

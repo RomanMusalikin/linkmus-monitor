@@ -1,0 +1,294 @@
+package server
+
+import (
+	"database/sql"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"strings"
+	"time"
+)
+
+// ReportRequest — тело запроса на генерацию отчёта.
+// Либо указывается Period (относительный), либо From+To (произвольный диапазон в формате "2006-01-02").
+type ReportRequest struct {
+	Nodes  []string `json:"nodes"`
+	Period string   `json:"period"` // "1h","6h","12h","24h","7d","30d" — или пусто при кастомном диапазоне
+	From   string   `json:"from"`   // "2006-01-02", опционально
+	To     string   `json:"to"`     // "2006-01-02", опционально
+}
+
+type nodeStats struct {
+	Name       string
+	DisplayName string
+	OS         string
+	IP         string
+	Online     bool
+	LastSeen   string
+
+	AvgCPU  float64
+	MaxCPU  float64
+	MinCPU  float64
+	AvgRAM  float64
+	MaxRAM  float64
+	RAMTotal float64
+	AvgDisk float64
+	MaxDisk float64
+	AvgNetRecv float64
+	AvgNetSent float64
+	Samples int
+}
+
+// HandleReport — POST /api/report
+func HandleReport(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	corsHeaders(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req ReportRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || len(req.Nodes) == 0 {
+		http.Error(w, `{"error":"укажите хотя бы один узел"}`, http.StatusBadRequest)
+		return
+	}
+	// Нормализуем: если задан диапазон дат — period игнорируется
+	if req.From != "" && req.To != "" {
+		req.Period = "custom"
+	} else if req.Period == "" {
+		req.Period = "24h"
+	}
+
+	settings := GetGigachatSettings(dbConn)
+	if settings.ClientID == "" || settings.ClientSecret == "" {
+		http.Error(w, `{"error":"GigaChat не настроен — укажите Client ID и Client Secret в настройках"}`, http.StatusBadRequest)
+		return
+	}
+
+	stats := gatherStats(dbConn, req.Nodes, req.Period, req.From, req.To)
+	if len(stats) == 0 {
+		http.Error(w, `{"error":"нет данных для выбранных узлов за указанный период"}`, http.StatusNotFound)
+		return
+	}
+
+	prompt := buildPrompt(stats, req.Period, req.From, req.To)
+
+	token, err := GigachatGetToken(settings)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"ошибка авторизации GigaChat: %s"}`, jsonEscape(err.Error())), http.StatusBadGateway)
+		return
+	}
+
+	report, err := GigachatChat(token, prompt)
+	if err != nil {
+		// сбрасываем кеш токена при ошибке
+		gcTokenMu.Lock()
+		gcToken = ""
+		gcTokenMu.Unlock()
+		http.Error(w, fmt.Sprintf(`{"error":"ошибка GigaChat: %s"}`, jsonEscape(err.Error())), http.StatusBadGateway)
+		return
+	}
+
+	json.NewEncoder(w).Encode(map[string]string{"report": report})
+}
+
+// gatherStats собирает агрегированную статистику по узлам за период.
+func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStats {
+	since, until := periodToRange(period, from, to)
+
+	aliases := GetAllAliases(db)
+
+	// Текущее состояние из кеша
+	cached, _ := getCachedNodes()
+	onlineMap := make(map[string]NodeSummary)
+	for _, n := range cached {
+		onlineMap[n.Name] = n
+	}
+
+	var result []nodeStats
+	for _, name := range nodes {
+		var s nodeStats
+		s.Name = name
+		if a, ok := aliases[name]; ok && a != "" {
+			s.DisplayName = a
+		} else {
+			s.DisplayName = name
+		}
+		if n, ok := onlineMap[name]; ok {
+			s.OS = n.OS
+			s.IP = n.IP
+			s.Online = n.Online
+			s.LastSeen = n.LastSeen
+		}
+
+		useHourly := period == "7d" || period == "30d" || period == "custom"
+		if useHourly {
+			row := db.QueryRow(`
+				SELECT
+					AVG(avg_cpu), MAX(avg_cpu), MIN(avg_cpu),
+					AVG(avg_ram), MAX(avg_ram), AVG(avg_ram_total),
+					AVG(avg_disk), MAX(avg_disk),
+					AVG(avg_net_recv), AVG(avg_net_sent),
+					COUNT(*)
+				FROM metrics_hourly
+				WHERE node_name = ? AND hour >= ? AND hour <= ?
+			`, name, since, until)
+			row.Scan(
+				&s.AvgCPU, &s.MaxCPU, &s.MinCPU,
+				&s.AvgRAM, &s.MaxRAM, &s.RAMTotal,
+				&s.AvgDisk, &s.MaxDisk,
+				&s.AvgNetRecv, &s.AvgNetSent,
+				&s.Samples,
+			)
+		} else {
+			row := db.QueryRow(`
+				SELECT
+					AVG(cpu_usage), MAX(cpu_usage), MIN(cpu_usage),
+					AVG(ram_usage), MAX(ram_usage), AVG(ram_total),
+					AVG(disk_usage), MAX(disk_usage),
+					AVG(COALESCE(net_bytes_recv,0)), AVG(COALESCE(net_bytes_sent,0)),
+					COUNT(*)
+				FROM metrics
+				WHERE node_name = ? AND timestamp >= ? AND timestamp <= ?
+			`, name, since, until)
+			row.Scan(
+				&s.AvgCPU, &s.MaxCPU, &s.MinCPU,
+				&s.AvgRAM, &s.MaxRAM, &s.RAMTotal,
+				&s.AvgDisk, &s.MaxDisk,
+				&s.AvgNetRecv, &s.AvgNetSent,
+				&s.Samples,
+			)
+		}
+
+		if s.Samples == 0 {
+			continue
+		}
+		result = append(result, s)
+	}
+	return result
+}
+
+// periodToRange возвращает (since, until) в формате RFC3339.
+// При period="custom" парсит from/to как "2006-01-02" и возвращает диапазон [начало дня from, конец дня to].
+func periodToRange(period, from, to string) (string, string) {
+	now := time.Now().UTC()
+	until := now.Format(time.RFC3339)
+
+	if period == "custom" && from != "" && to != "" {
+		loc := time.Local
+		f, err1 := time.ParseInLocation("2006-01-02", from, loc)
+		t, err2 := time.ParseInLocation("2006-01-02", to, loc)
+		if err1 == nil && err2 == nil {
+			since := f.UTC().Format(time.RFC3339)
+			// до конца последнего дня
+			untilCustom := t.Add(24*time.Hour - time.Second).UTC().Format(time.RFC3339)
+			return since, untilCustom
+		}
+	}
+
+	var d time.Duration
+	switch period {
+	case "1h":
+		d = time.Hour
+	case "6h":
+		d = 6 * time.Hour
+	case "12h":
+		d = 12 * time.Hour
+	case "7d":
+		d = 7 * 24 * time.Hour
+	case "30d":
+		d = 30 * 24 * time.Hour
+	default: // "24h"
+		d = 24 * time.Hour
+	}
+	return now.Add(-d).Format(time.RFC3339), until
+}
+
+// periodLabel возвращает человекочитаемое название периода.
+func periodLabel(period, from, to string) string {
+	if period == "custom" && from != "" && to != "" {
+		return fmt.Sprintf("с %s по %s", from, to)
+	}
+	switch period {
+	case "1h":
+		return "последний час"
+	case "6h":
+		return "последние 6 часов"
+	case "12h":
+		return "последние 12 часов"
+	case "7d":
+		return "последние 7 дней"
+	case "30d":
+		return "последние 30 дней"
+	default:
+		return "последние 24 часа"
+	}
+}
+
+// buildPrompt формирует текст запроса к GigaChat.
+func buildPrompt(stats []nodeStats, period, from, to string) string {
+	var sb strings.Builder
+
+	sb.WriteString("Ты — система анализа серверной инфраструктуры. ")
+	sb.WriteString("Составь профессиональный отчёт на русском языке о состоянии узлов сети за указанный период.\n\n")
+	sb.WriteString(fmt.Sprintf("Период анализа: %s\n", periodLabel(period, from, to)))
+	sb.WriteString(fmt.Sprintf("Количество узлов: %d\n\n", len(stats)))
+	sb.WriteString("=== ДАННЫЕ МОНИТОРИНГА ===\n\n")
+
+	for _, s := range stats {
+		sb.WriteString(fmt.Sprintf("Узел: %s", s.DisplayName))
+		if s.DisplayName != s.Name {
+			sb.WriteString(fmt.Sprintf(" (%s)", s.Name))
+		}
+		sb.WriteString("\n")
+		if s.OS != "" {
+			sb.WriteString(fmt.Sprintf("  ОС: %s\n", s.OS))
+		}
+		if s.IP != "" {
+			sb.WriteString(fmt.Sprintf("  IP: %s\n", s.IP))
+		}
+		if s.Online {
+			sb.WriteString("  Статус: ОНЛАЙН\n")
+		} else {
+			sb.WriteString(fmt.Sprintf("  Статус: ОФЛАЙН (последний раз онлайн: %s)\n", s.LastSeen))
+		}
+		sb.WriteString(fmt.Sprintf("  CPU: среднее %.1f%%, максимум %.1f%%, минимум %.1f%%\n",
+			s.AvgCPU, s.MaxCPU, s.MinCPU))
+
+		ramPct := 0.0
+		maxRamPct := 0.0
+		if s.RAMTotal > 0 {
+			ramPct = s.AvgRAM / s.RAMTotal * 100
+			maxRamPct = s.MaxRAM / s.RAMTotal * 100
+		}
+		sb.WriteString(fmt.Sprintf("  RAM: среднее %.2f / %.2f ГБ (%.1f%%), пиковое %.2f ГБ (%.1f%%)\n",
+			s.AvgRAM, s.RAMTotal, ramPct, s.MaxRAM, maxRamPct))
+		sb.WriteString(fmt.Sprintf("  Диск: среднее %.1f%%, максимум %.1f%%\n",
+			s.AvgDisk, s.MaxDisk))
+		sb.WriteString(fmt.Sprintf("  Сеть: среднее получение %.1f КБ/с, отправка %.1f КБ/с\n",
+			s.AvgNetRecv/1024, s.AvgNetSent/1024))
+		sb.WriteString(fmt.Sprintf("  Точек данных: %d\n\n", s.Samples))
+	}
+
+	sb.WriteString("=== ЗАДАНИЕ ===\n\n")
+	sb.WriteString("Составь структурированный отчёт со следующими разделами:\n")
+	sb.WriteString("1. Общая сводка — краткое резюме состояния инфраструктуры\n")
+	sb.WriteString("2. Анализ узлов — подробный разбор каждого узла с оценкой показателей\n")
+	sb.WriteString("3. Выявленные проблемы — перечисли узлы и метрики, требующие внимания\n")
+	sb.WriteString("4. Рекомендации — конкретные действия по улучшению\n\n")
+	sb.WriteString("Используй профессиональный технический язык. Будь конкретен в цифрах и выводах.")
+
+	return sb.String()
+}
+
+// jsonEscape экранирует строку для безопасной вставки в JSON-литерал.
+func jsonEscape(s string) string {
+	b, _ := json.Marshal(s)
+	return strings.Trim(string(b), `"`)
+}

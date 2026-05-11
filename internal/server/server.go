@@ -135,6 +135,12 @@ func Run() {
 	// Настройки портов сервисов
 	http.HandleFunc("/api/settings/ports", requireAuth(handlePortSettings))
 
+	// Настройки GigaChat
+	http.HandleFunc("/api/settings/gigachat", requireAuth(handleGigachatSettings))
+
+	// Генерация отчёта через GigaChat
+	http.HandleFunc("/api/report", requireAuth(HandleReport))
+
 	// Фронтенд — статические файлы с SPA-fallback
 	webPath := os.Getenv("WEB_PATH")
 	if webPath == "" {
@@ -382,6 +388,35 @@ func handleAlertSettings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		json.NewEncoder(w).Encode(map[string]string{"status": "sent"})
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// handleGigachatSettings — GET/PUT /api/settings/gigachat
+func handleGigachatSettings(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	corsHeaders(w)
+	switch r.Method {
+	case http.MethodOptions:
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodGet:
+		json.NewEncoder(w).Encode(GetGigachatSettings(dbConn))
+	case http.MethodPut:
+		var s GigachatSettings
+		if err := json.NewDecoder(r.Body).Decode(&s); err != nil {
+			http.Error(w, `{"error":"invalid body"}`, http.StatusBadRequest)
+			return
+		}
+		if err := SaveGigachatSettings(dbConn, s); err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		// сбрасываем кеш токена при смене настроек
+		gcTokenMu.Lock()
+		gcToken = ""
+		gcTokenMu.Unlock()
+		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 	}

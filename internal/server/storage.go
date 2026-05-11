@@ -176,6 +176,15 @@ func MigrateDB(db *sql.DB) {
 		db.Exec(stmt) // игнорируем ошибку — колонка уже существует
 	}
 
+	// Настройки GigaChat API (singleton, id=1)
+	db.Exec(`
+	CREATE TABLE IF NOT EXISTS gigachat_settings (
+		id            INTEGER PRIMARY KEY DEFAULT 1,
+		client_id     TEXT    DEFAULT '',
+		client_secret TEXT    DEFAULT '',
+		scope         TEXT    DEFAULT 'GIGACHAT_API_PERS'
+	)`)
+
 	// Настройки портов сервисов (singleton, id=1)
 	db.Exec(`
 	CREATE TABLE IF NOT EXISTS port_settings (

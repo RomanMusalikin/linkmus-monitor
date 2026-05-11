@@ -51,21 +51,21 @@ function CreateUserModal({ onClose }) {
               <input ref={inputRef} type="text" value={login} onChange={e => setLogin(e.target.value)}
                 autoComplete="off" placeholder="username"
                 className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-600 text-slate-200 text-sm
-                  focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-all" />
+                  outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-colors" />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1.5 uppercase tracking-wider">Пароль</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)}
                 autoComplete="new-password" placeholder="••••••••"
                 className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-600 text-slate-200 text-sm
-                  focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-all" />
+                  outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-colors" />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1.5 uppercase tracking-wider">Повторите пароль</label>
               <input type="password" value={password2} onChange={e => setPassword2(e.target.value)}
                 autoComplete="new-password" placeholder="••••••••"
                 className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-600 text-slate-200 text-sm
-                  focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-all" />
+                  outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-colors" />
             </div>
             {error && (
               <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{error}</div>

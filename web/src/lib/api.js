@@ -154,3 +154,33 @@ export async function sendTestTelegram() {
     throw new Error(err.error || 'Ошибка отправки');
   }
 }
+
+export async function getGigachatSettings() {
+  const res = await fetch(`${API_BASE}/settings/gigachat`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Ошибка получения настроек GigaChat');
+  return res.json();
+}
+
+export async function saveGigachatSettings(settings) {
+  const res = await fetch(`${API_BASE}/settings/gigachat`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(settings),
+  });
+  if (!res.ok) throw new Error('Ошибка сохранения настроек GigaChat');
+}
+
+export async function generateReport(nodes, period, from, to) {
+  const body = { nodes, period };
+  if (from && to) { body.from = from; body.to = to; }
+  const res = await fetch(`${API_BASE}/report`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Ошибка генерации отчёта');
+  }
+  return res.json();
+}

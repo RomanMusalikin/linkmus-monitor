@@ -404,77 +404,90 @@ export default function NodeDetail() {
 
       {/* ── Заголовок ── */}
       <div className="mb-6">
-        {/* Строка 1: назад + имя узла */}
-        <div className="flex items-center gap-4">
+
+        {/* ── Строка 1: назад + иконка + имя + статус + [кнопки на десктопе] ── */}
+        <div className="flex items-center gap-3">
           <Link to="/"
             className="p-2 bg-slate-800 hover:bg-slate-700 rounded-xl border border-slate-700
                        text-slate-400 hover:text-slate-100 transition-colors flex-shrink-0">
             <ArrowLeft className="w-4 h-4" />
           </Link>
-          <div className="flex items-center gap-3 flex-1 min-w-0">
-            <div className={`p-2 rounded-xl flex-shrink-0 ${isWindows ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
-              {isWindows
-                ? <Monitor className="w-5 h-5 text-blue-400" />
-                : <Terminal className="w-5 h-5 text-emerald-400" />}
+
+          <div className={`p-2 rounded-xl flex-shrink-0 ${isWindows ? 'bg-blue-500/10' : 'bg-emerald-500/10'}`}>
+            {isWindows
+              ? <Monitor className="w-5 h-5 text-blue-400" />
+              : <Terminal className="w-5 h-5 text-emerald-400" />}
+          </div>
+
+          {/* Имя + подзаголовок */}
+          <div className="min-w-0 flex-1">
+            {/* Имя + точка статуса */}
+            <div className="flex items-center gap-2 min-w-0">
+              {renaming ? (
+                <div className="flex items-center gap-1.5">
+                  <input
+                    ref={renameInputRef}
+                    value={renameValue}
+                    onChange={e => setRenameValue(e.target.value)}
+                    onKeyDown={async e => {
+                      if (e.key === 'Enter') {
+                        const alias = renameValue.trim();
+                        await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
+                        setLocalDisplayName(alias === node.name ? '' : alias);
+                        refresh?.();
+                        setRenaming(false);
+                      }
+                      if (e.key === 'Escape') setRenaming(false);
+                    }}
+                    className="text-xl font-bold bg-slate-700 text-slate-100 rounded-lg px-2 py-0.5 outline-none border border-blue-500/50 w-40 sm:w-48"
+                    maxLength={64}
+                  />
+                  <button onClick={async () => {
+                    const alias = renameValue.trim();
+                    await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
+                    setLocalDisplayName(alias === node.name ? '' : alias);
+                    refresh?.();
+                    setRenaming(false);
+                  }} className="text-emerald-400 hover:text-emerald-300 flex-shrink-0"><Check className="w-4 h-4" /></button>
+                  <button onClick={() => setRenaming(false)} className="text-slate-500 hover:text-slate-300 flex-shrink-0"><X className="w-4 h-4" /></button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-1.5 min-w-0 group/name">
+                  <h1 className="text-xl font-bold text-slate-100 truncate">{node.displayName || node.name}</h1>
+                  <button onClick={() => { setRenameValue(node.displayName || node.name); setRenaming(true); setTimeout(() => renameInputRef.current?.select(), 0); }}
+                    className="opacity-0 group-hover/name:opacity-100 transition-opacity text-slate-600 hover:text-slate-400 flex-shrink-0">
+                    <Pencil className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+              <span className={`w-2 h-2 rounded-full flex-shrink-0 ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
             </div>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                {renaming ? (
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      ref={renameInputRef}
-                      value={renameValue}
-                      onChange={e => setRenameValue(e.target.value)}
-                      onKeyDown={async e => {
-                        if (e.key === 'Enter') {
-                          const alias = renameValue.trim();
-                          await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
-                          setLocalDisplayName(alias === node.name ? '' : alias);
-                          refresh?.();
-                          setRenaming(false);
-                        }
-                        if (e.key === 'Escape') setRenaming(false);
-                      }}
-                      className="text-xl font-bold bg-slate-700 text-slate-100 rounded-lg px-2 py-0.5 outline-none border border-blue-500/50 w-48"
-                      maxLength={64}
-                    />
-                    <button onClick={async () => {
-                      const alias = renameValue.trim();
-                      await renameNode(node.name, alias === node.name ? '' : alias).catch(() => {});
-                      setLocalDisplayName(alias === node.name ? '' : alias);
-                      refresh?.();
-                      setRenaming(false);
-                    }} className="text-emerald-400 hover:text-emerald-300"><Check className="w-4 h-4" /></button>
-                    <button onClick={() => setRenaming(false)} className="text-slate-500 hover:text-slate-300"><X className="w-4 h-4" /></button>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 group/name">
-                    <h1 className="text-xl font-bold text-slate-100 truncate">{node.displayName || node.name}</h1>
-                    <button onClick={() => { setRenameValue(node.displayName || node.name); setRenaming(true); setTimeout(() => renameInputRef.current?.select(), 0); }}
-                      className="opacity-0 group-hover/name:opacity-100 transition-opacity text-slate-600 hover:text-slate-400 flex-shrink-0">
-                      <Pencil className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                )}
-                <span className={`w-2 h-2 rounded-full flex-shrink-0 ${node.online ? 'bg-emerald-400' : 'bg-red-400'}`} />
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0
-                  ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
-                  {node.online ? 'Online' : `Offline · был ${node.lastSeen}`}
+
+            {/* Бейджи статуса + инфо — всё в одну строку, без переноса */}
+            <div className="flex items-center gap-2 mt-1 min-w-0 overflow-hidden">
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0
+                ${node.online ? 'bg-emerald-500/10 text-emerald-400' : 'bg-red-500/10 text-red-400'}`}>
+                {node.online ? 'Online' : 'Offline'}
+              </span>
+              {node.agentVersion && node.agentVersion !== 'unknown' && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium flex-shrink-0
+                  ${serverVersion && node.agentVersion === serverVersion
+                    ? 'bg-emerald-500/10 text-emerald-400/80'
+                    : 'bg-amber-500/10 text-amber-400'}`}>
+                  agent {node.agentVersion}
                 </span>
-                {node.agentVersion && node.agentVersion !== 'unknown' && (
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded font-mono font-medium flex-shrink-0
-                    ${serverVersion && node.agentVersion === serverVersion
-                      ? 'bg-emerald-500/10 text-emerald-400/80'
-                      : 'bg-amber-500/10 text-amber-400'}`}>
-                    agent {node.agentVersion}
-                  </span>
-                )}
-              </div>
-              <p className="text-slate-500 text-sm truncate">
+              )}
+              <span className="text-slate-600 text-xs hidden sm:inline">·</span>
+              <span className="text-slate-500 text-xs truncate hidden sm:block">
                 {getOSLabel(node.os)} · {node.ip || '—'} · ⬆ {node.uptime || '0 ч.'}
                 {node.cpuModel ? ` · ${node.cpuModel}` : ''}
-              </p>
+              </span>
             </div>
+
+            {/* Инфо-строка только на мобиле (без cpuModel) */}
+            <p className="sm:hidden text-slate-500 text-xs mt-0.5 truncate">
+              {getOSLabel(node.os)} · {node.ip || '—'} · ⬆ {node.uptime || '0 ч.'}
+            </p>
           </div>
 
           {/* Кнопки — только на десктопе в одну строку с заголовком */}
@@ -542,16 +555,16 @@ export default function NodeDetail() {
         </div>
 
         {/* Строка 2: кнопки на мобильном (скролл по горизонтали) */}
-        <div className="flex sm:hidden items-center gap-2 mt-3 overflow-x-auto pb-1">
-          <div className="relative flex-shrink-0"
-            onMouseEnter={() => { clearTimeout(exportCloseTimer.current); setExportOpen(true); }}
-            onMouseLeave={() => { exportCloseTimer.current = setTimeout(() => setExportOpen(false), 200); }}>
+        {/* Строка 2 мобайл: [⬇] [Live|1ч|24ч|7д|14д|30д] */}
+        <div className="flex sm:hidden items-center gap-2 mt-3">
+          {/* Кнопка экспорта — только иконка на мобиле */}
+          <div className="relative flex-shrink-0">
             <button
               onClick={() => setExportOpen(v => !v)}
               className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border transition-all font-medium
               bg-slate-800 text-slate-400 border-slate-700 hover:text-slate-200 hover:border-slate-600 whitespace-nowrap">
               <Download className="w-4 h-4" />
-              Экспорт
+              <span className="hidden xs:inline">Экспорт</span>
             </button>
             {exportOpen && (
               <div className="absolute left-0 top-full mt-1 flex flex-col z-10
@@ -563,9 +576,10 @@ export default function NodeDetail() {
               </div>
             )}
           </div>
-          <div className="flex items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden text-sm flex-shrink-0">
+          {/* Переключатель периода — растягивается на всю оставшуюся ширину */}
+          <div className="flex flex-1 items-center bg-slate-800 border border-slate-700 rounded-lg overflow-hidden text-sm">
             {[
-              { key: 'live', label: 'Сейчас' },
+              { key: 'live', label: '●' },
               { key: '1h',   label: '1ч' },
               { key: '24h',  label: '24ч' },
               { key: '7d',   label: '7д' },
@@ -575,10 +589,9 @@ export default function NodeDetail() {
               <button key={key}
                 onClick={() => key === 'live' ? (setHistoryRange('live'), setLongHistory(null)) : selectHistoryRange(key)}
                 disabled={loadingFull || loadingLong}
-                className={`px-3 py-1.5 font-medium transition-all whitespace-nowrap
-                  ${historyRange === key
-                    ? 'bg-violet-500/20 text-violet-400'
-                    : 'text-slate-500 hover:text-slate-300'}`}>
+                title={key === 'live' ? 'Сейчас' : key}
+                className={`flex-1 py-1.5 font-medium transition-all text-center text-xs
+                  ${historyRange === key ? 'bg-violet-500/20 text-violet-400' : 'text-slate-500 hover:text-slate-300'}`}>
                 {label}
               </button>
             ))}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield } from 'lucide-react';
-import { getAlertSettings, saveAlertSettings, sendTestEmail, sendTestTelegram, getPortSettings, savePortSettings } from '../lib/api';
+import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield, Bot } from 'lucide-react';
+import { getAlertSettings, saveAlertSettings, sendTestEmail, sendTestTelegram, getPortSettings, savePortSettings, getGigachatSettings, saveGigachatSettings } from '../lib/api';
 
 function Field({ label, hint, children }) {
   return (
@@ -16,7 +16,7 @@ function Input({ className = '', ...props }) {
   return (
     <input
       className={`w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
-        focus:outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-all ${className}`}
+        outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-colors ${className}`}
       {...props}
     />
   );
@@ -54,6 +54,7 @@ function Toggle({ enabled, onToggle, labelOn, labelOff, hint }) {
 const TABS = [
   { id: 'notifications', label: 'Уведомления', icon: Bell },
   { id: 'ports', label: 'Порты сервисов', icon: Shield },
+  { id: 'gigachat', label: 'GigaChat AI', icon: Bot },
 ];
 
 const defaultSettings = {
@@ -82,6 +83,10 @@ export default function Settings() {
   const [portsSaving, setPortsSaving] = useState(false);
   const [portsSaveMsg, setPortsSaveMsg] = useState('');
 
+  const [gigachat, setGigachat] = useState({ clientId: '', clientSecret: '', scope: 'GIGACHAT_API_PERS' });
+  const [gcSaving, setGcSaving] = useState(false);
+  const [gcSaveMsg, setGcSaveMsg] = useState('');
+
   useEffect(() => {
     getAlertSettings()
       .then(data => setS({ ...defaultSettings, ...data }))
@@ -89,6 +94,9 @@ export default function Settings() {
       .finally(() => setLoading(false));
     getPortSettings()
       .then(data => setPorts({ ...defaultPortSettings, ...data }))
+      .catch(() => {});
+    getGigachatSettings()
+      .then(data => setGigachat(prev => ({ ...prev, ...data })))
       .catch(() => {});
   }, []);
 
@@ -132,6 +140,20 @@ export default function Settings() {
       setSaveMsg('Ошибка: ' + err.message);
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleGcSave(e) {
+    e.preventDefault();
+    setGcSaving(true); setGcSaveMsg('');
+    try {
+      await saveGigachatSettings(gigachat);
+      setGcSaveMsg('✓ Сохранено');
+      setTimeout(() => setGcSaveMsg(''), 2500);
+    } catch (err) {
+      setGcSaveMsg('Ошибка: ' + err.message);
+    } finally {
+      setGcSaving(false);
     }
   }
 
@@ -231,6 +253,62 @@ export default function Settings() {
             </button>
             {portsSaveMsg && (
               <span className={`text-sm ${portsSaveMsg.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>{portsSaveMsg}</span>
+            )}
+          </div>
+        </form>
+      )}
+
+      {tab === 'gigachat' && (
+        <form onSubmit={handleGcSave} className="space-y-5">
+          <Section title="GigaChat API" icon={Bot} iconColor="text-violet-400">
+            <p className="text-xs text-slate-500 mb-4">
+              Учётные данные для интеграции с GigaChat. Получить Client ID и Client Secret можно в{' '}
+              <span className="text-slate-400">личном кабинете Sber Developers</span>.
+              Используется для генерации AI-отчётов по узлам.
+            </p>
+            <div className="space-y-4">
+              <Field label="Client ID (авторизационные данные)" hint="Authorization Data из личного кабинета">
+                <Input
+                  type="text"
+                  value={gigachat.clientId}
+                  onChange={e => setGigachat(p => ({ ...p, clientId: e.target.value }))}
+                  placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
+                  autoComplete="off"
+                />
+              </Field>
+              <Field label="Client Secret" hint="Секретный ключ приложения">
+                <Input
+                  type="password"
+                  value={gigachat.clientSecret}
+                  onChange={e => setGigachat(p => ({ ...p, clientSecret: e.target.value }))}
+                  placeholder="••••••••••••••••"
+                  autoComplete="new-password"
+                />
+              </Field>
+              <Field label="Scope" hint="GIGACHAT_API_PERS — личный, GIGACHAT_API_CORP — корпоративный">
+                <select
+                  value={gigachat.scope}
+                  onChange={e => setGigachat(p => ({ ...p, scope: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
+                    outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-colors"
+                >
+                  <option value="GIGACHAT_API_PERS">GIGACHAT_API_PERS (личный)</option>
+                  <option value="GIGACHAT_API_B2B">GIGACHAT_API_B2B (B2B)</option>
+                  <option value="GIGACHAT_API_CORP">GIGACHAT_API_CORP (корпоративный)</option>
+                </select>
+              </Field>
+            </div>
+          </Section>
+
+          <div className="flex items-center gap-4">
+            <button type="submit" disabled={gcSaving}
+              className="flex items-center gap-2 px-5 py-2.5 rounded-xl bg-violet-500/20 text-violet-400 border border-violet-500/30
+                hover:bg-violet-500/30 hover:text-violet-300 transition-all font-medium text-sm disabled:opacity-50">
+              <Save className="w-4 h-4" />
+              {gcSaving ? 'Сохранение...' : 'Сохранить'}
+            </button>
+            {gcSaveMsg && (
+              <span className={`text-sm ${gcSaveMsg.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>{gcSaveMsg}</span>
             )}
           </div>
         </form>
