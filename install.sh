@@ -647,6 +647,10 @@ do_update() {
       echo -e "${GREEN}[ OK ]${RESET} CLI mon обновлён" || true
     rm -f "$cli_tmp"
   fi
+  # Bash reads scripts from file while executing. If do_update rewrites /usr/local/bin/mon,
+  # the file offset shifts and bash reads garbage from the new file → syntax error.
+  # exit 0 here prevents bash from reading past the function body.
+  exit 0
 }
 
 do_delete() {
