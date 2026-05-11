@@ -381,6 +381,9 @@ PYEOF
     ufw delete allow from 172.16.0.0/12 to any port "$srv_port" >/dev/null 2>&1 || true
   fi
 
+  # Удаляем резервные копии Caddyfile, созданные нами
+  rm -f "${caddyfile}.bak-linkmus-"* 2>/dev/null || true
+
   if [ "$caddy_mode" = "docker" ] && [ -n "$caddy_container" ]; then
     docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
   elif [ "$caddy_mode" = "local" ]; then
@@ -550,6 +553,8 @@ PYEOF
     ufw delete allow from 172.16.0.0/12 to any port "$srv_port" >/dev/null 2>&1 || true
   fi
 
+  rm -f "${caddyfile}.bak-linkmus-"* 2>/dev/null || true
+
   if [ "$caddy_mode" = "docker" ] && [ -n "$caddy_container" ]; then
     docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
   elif [ "$caddy_mode" = "local" ]; then
@@ -592,6 +597,7 @@ do_update() {
     install -Dm755 "$tmp/mon-server" "$SERVER_BIN"
     mkdir -p "$SERVER_WEB"; rm -rf "${SERVER_WEB:?}"/*
     cp -r "$tmp/web-dist/." "$SERVER_WEB/"
+    chown -R mon-monitor:mon-monitor "$SERVER_WEB" 2>/dev/null || true
     echo "$latest_tag" > "$SERVER_VERSION"
     rm -rf "$tmp"
     systemctl start mon-server
@@ -663,7 +669,10 @@ do_delete() {
       nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
     fi
     caddy_remove_block
-    [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
+    if [ ! -f "$AGENT_BIN" ]; then
+      rm -f /usr/local/bin/mon /usr/bin/mon
+      userdel mon-monitor 2>/dev/null || true
+    fi
     echo -e "${GREEN}[ OK ]${RESET} Сервер полностью удалён."
 
   else
@@ -675,7 +684,10 @@ do_delete() {
     rm -f /etc/systemd/system/mon-agent.service
     systemctl daemon-reload
     rm -rf "${AGENT_DIR:?}"
-    [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
+    if [ ! -f "$SERVER_BIN" ]; then
+      rm -f /usr/local/bin/mon /usr/bin/mon
+      userdel mon-monitor 2>/dev/null || true
+    fi
     echo -e "${GREEN}[ OK ]${RESET} Агент полностью удалён."
   fi
 }
@@ -727,7 +739,10 @@ uninstall_server() {
 
   caddy_cleanup_block
 
-  [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
+  if [ ! -f "$AGENT_BIN" ]; then
+    rm -f /usr/local/bin/mon /usr/bin/mon
+    userdel mon-monitor 2>/dev/null || true
+  fi
 
   ok "Сервер полностью удалён."
 }
@@ -745,7 +760,10 @@ uninstall_agent() {
 
   rm -rf "${AGENT_DIR:?}"
 
-  [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
+  if [ ! -f "$SERVER_BIN" ]; then
+    rm -f /usr/local/bin/mon /usr/bin/mon
+    userdel mon-monitor 2>/dev/null || true
+  fi
 
   ok "Агент полностью удалён."
 }
