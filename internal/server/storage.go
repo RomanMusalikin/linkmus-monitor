@@ -197,6 +197,18 @@ func MigrateDB(db *sql.DB) {
 		dns_port    INTEGER DEFAULT 53
 	)`)
 
+	// Переопределения портов для конкретных узлов (NULL = использовать глобальный дефолт)
+	db.Exec(`
+	CREATE TABLE IF NOT EXISTS node_port_overrides (
+		node_name  TEXT    PRIMARY KEY,
+		ssh_port   INTEGER,
+		rdp_port   INTEGER,
+		smb_port   INTEGER,
+		http_port  INTEGER,
+		winrm_port INTEGER,
+		dns_port   INTEGER
+	)`)
+
 	// Индексы: критически важны для производительности при большом числе узлов
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_metrics_node_ts ON metrics(node_name, timestamp)`,

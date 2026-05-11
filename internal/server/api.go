@@ -269,6 +269,37 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 
 	rest := strings.TrimPrefix(r.URL.Path, "/api/nodes/")
 
+	// GET /api/nodes/{name}/ports — переопределения портов для узла
+	if strings.HasSuffix(rest, "/ports") && r.Method == http.MethodGet {
+		name := strings.TrimSuffix(rest, "/ports")
+		if name == "" {
+			http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(GetNodePortOverride(dbConn, name))
+		return
+	}
+
+	// PUT /api/nodes/{name}/ports — сохранить переопределения портов
+	if strings.HasSuffix(rest, "/ports") && r.Method == http.MethodPut {
+		name := strings.TrimSuffix(rest, "/ports")
+		if name == "" {
+			http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
+			return
+		}
+		var body NodePortOverride
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+			return
+		}
+		if err := SaveNodePortOverride(dbConn, name, body); err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	// PUT /api/nodes/{name}/alias
 	if strings.HasSuffix(rest, "/alias") && r.Method == http.MethodPut {
 		name := strings.TrimSuffix(rest, "/alias")
@@ -308,6 +339,7 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	dbConn.Exec(`DELETE FROM metrics_hourly WHERE node_name = ?`, name)
 	dbConn.Exec(`DELETE FROM node_aliases WHERE node_name = ?`, name)
+	dbConn.Exec(`DELETE FROM node_port_overrides WHERE node_name = ?`, name)
 	removeFromNodesCache(name)
 	w.WriteHeader(http.StatusOK)
 }

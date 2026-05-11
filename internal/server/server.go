@@ -259,6 +259,15 @@ func handleAuthRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Подставляем email регистрации в настройки уведомлений если там пусто
+	if body.Email != "" {
+		existing := GetAlertSettings(dbConn)
+		if existing.ToEmail == "" {
+			existing.ToEmail = body.Email
+			SaveAlertSettings(dbConn, existing)
+		}
+	}
+
 	token, err := CreateSession(dbConn, userID)
 	if err != nil {
 		http.Error(w, `{"error":"session failed"}`, http.StatusInternalServerError)

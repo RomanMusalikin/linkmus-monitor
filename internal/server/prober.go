@@ -89,39 +89,54 @@ func probeDNS(ip string, port int) (bool, float64) {
 	return true, ms
 }
 
+type nodeTarget struct {
+	ip   string
+	name string
+}
+
 func runProbes(db *sql.DB) {
-	rows, err := db.Query(`SELECT DISTINCT ip FROM metrics WHERE ip != '' AND ip != '127.0.0.1'`)
+	// Берём последний известный node_name для каждого уникального IP
+	rows, err := db.Query(`
+		SELECT m.ip, m.node_name FROM metrics m
+		INNER JOIN (
+			SELECT ip, MAX(timestamp) AS mt FROM metrics
+			WHERE ip != '' AND ip != '127.0.0.1'
+			GROUP BY ip
+		) latest ON m.ip = latest.ip AND m.timestamp = latest.mt`)
 	if err != nil {
 		return
 	}
-	var ips []string
+	var targets []nodeTarget
 	for rows.Next() {
-		var ip string
-		if rows.Scan(&ip) == nil && ip != "" {
-			ips = append(ips, ip)
+		var t nodeTarget
+		if rows.Scan(&t.ip, &t.name) == nil && t.ip != "" {
+			targets = append(targets, t)
 		}
 	}
 	rows.Close()
 
-	ports := GetPortSettings(db)
+	globalPorts := GetPortSettings(db)
 
 	var wg sync.WaitGroup
-	for _, ip := range ips {
+	for _, t := range targets {
 		wg.Add(1)
-		go func(ip string) {
+		go func(t nodeTarget) {
 			defer wg.Done()
+			override := GetNodePortOverride(db, t.name)
+			ports := EffectivePortSettings(globalPorts, override)
+
 			result := ProbeResult{}
-			result.SSHReachable, result.SSHMs = probeTCP(ip, fmt.Sprintf("%d", ports.SSHPort))
-			result.RDPReachable, result.RDPMs = probeTCP(ip, fmt.Sprintf("%d", ports.RDPPort))
-			result.SMBReachable, result.SMBMs = probeTCP(ip, fmt.Sprintf("%d", ports.SMBPort))
-			result.HTTPReachable, result.HTTPMs = probeHTTP(ip, ports.HTTPPort)
-			result.WinRMReachable, result.WinRMMs = probeTCP(ip, fmt.Sprintf("%d", ports.WinRMPort))
-			result.DNSReachable, result.DNSMs = probeDNS(ip, ports.DNSPort)
+			result.SSHReachable, result.SSHMs = probeTCP(t.ip, fmt.Sprintf("%d", ports.SSHPort))
+			result.RDPReachable, result.RDPMs = probeTCP(t.ip, fmt.Sprintf("%d", ports.RDPPort))
+			result.SMBReachable, result.SMBMs = probeTCP(t.ip, fmt.Sprintf("%d", ports.SMBPort))
+			result.HTTPReachable, result.HTTPMs = probeHTTP(t.ip, ports.HTTPPort)
+			result.WinRMReachable, result.WinRMMs = probeTCP(t.ip, fmt.Sprintf("%d", ports.WinRMPort))
+			result.DNSReachable, result.DNSMs = probeDNS(t.ip, ports.DNSPort)
 
 			probeCacheMu.Lock()
-			probeCache[ip] = result
+			probeCache[t.ip] = result
 			probeCacheMu.Unlock()
-		}(ip)
+		}(t)
 	}
 	wg.Wait()
 }

@@ -485,11 +485,7 @@ install_agent() {
     srv="${srv:-http://10.10.10.10:8080}"
     [[ "$srv" =~ ^https?:// ]] || die "URL должен начинаться с http:// или https://"
     [[ "$srv" != *'"'* ]] || die "URL не должен содержать кавычки"
-    read -rp "  Интервал в секундах [5]: " ivl </dev/tty
-    ivl="${ivl:-5}"
-    [[ "${ivl%s}" =~ ^[0-9]+$ ]] || die "Интервал должен быть числом"
-    ivl="${ivl%s}s"
-    printf 'server:\n  url: "%s/api/metrics"\n  interval: %s\n' "$srv" "$ivl" > "$AGENT_CFG"
+    printf 'server:\n  url: "%s/api/metrics"\n  interval: 10s\n' "$srv" > "$AGENT_CFG"
     ok "Конфиг создан: $AGENT_CFG"
   else
     ok "Текущий конфиг:"
@@ -499,10 +495,7 @@ install_agent() {
       read -rp "  URL сервера: " srv </dev/tty
       [[ "$srv" =~ ^https?:// ]] || die "URL должен начинаться с http:// или https://"
       [[ "$srv" != *'"'* ]] || die "URL не должен содержать кавычки"
-      read -rp "  Интервал в секундах: " ivl </dev/tty
-      [[ "${ivl%s}" =~ ^[0-9]+$ ]] || die "Интервал должен быть числом"
-      ivl="${ivl%s}s"
-      printf 'server:\n  url: "%s/api/metrics"\n  interval: %s\n' "$srv" "$ivl" > "$AGENT_CFG"
+      printf 'server:\n  url: "%s/api/metrics"\n  interval: 10s\n' "$srv" > "$AGENT_CFG"
       ok "Конфиг обновлён"
     fi
   fi

@@ -144,6 +144,21 @@ export async function savePortSettings(settings) {
   if (!res.ok) throw new Error('Ошибка сохранения настроек портов');
 }
 
+export async function getNodePortOverride(name) {
+  const res = await fetch(`${API_BASE}/nodes/${encodeURIComponent(name)}/ports`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Ошибка получения настроек портов узла');
+  return res.json();
+}
+
+export async function saveNodePortOverride(name, ports) {
+  const res = await fetch(`${API_BASE}/nodes/${encodeURIComponent(name)}/ports`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(ports),
+  });
+  if (!res.ok) throw new Error('Ошибка сохранения настроек портов узла');
+}
+
 export async function sendTestTelegram() {
   const res = await fetch(`${API_BASE}/settings/alerts/test-telegram`, {
     method: 'POST',
