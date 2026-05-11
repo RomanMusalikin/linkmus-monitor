@@ -13,13 +13,22 @@ const PERIODS = [
   { value: 'custom', label: 'Произвольный период' },
 ];
 
-function todayStr() {
-  return new Date().toISOString().slice(0, 10);
+function nowStr() {
+  const d = new Date();
+  return d.getFullYear() + '-'
+    + String(d.getMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getDate()).padStart(2, '0') + 'T'
+    + String(d.getHours()).padStart(2, '0') + ':'
+    + String(d.getMinutes()).padStart(2, '0');
 }
 function daysAgoStr(n) {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return d.getFullYear() + '-'
+    + String(d.getMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getDate()).padStart(2, '0') + 'T'
+    + String(d.getHours()).padStart(2, '0') + ':'
+    + String(d.getMinutes()).padStart(2, '0');
 }
 
 function NodeCheckbox({ node, checked, onToggle }) {
@@ -92,7 +101,7 @@ export default function Reports() {
   const [selected, setSelected] = useState([]);
   const [period, setPeriod] = useState('24h');
   const [dateFrom, setDateFrom] = useState(daysAgoStr(7));
-  const [dateTo, setDateTo] = useState(todayStr());
+  const [dateTo, setDateTo] = useState(nowStr());
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
   const [error, setError] = useState('');
@@ -182,7 +191,7 @@ export default function Reports() {
                 <div>
                   <label className="block text-xs text-slate-400 font-medium mb-1 uppercase tracking-wider">С</label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={dateFrom}
                     max={dateTo}
                     onChange={e => setDateFrom(e.target.value)}
@@ -194,10 +203,10 @@ export default function Reports() {
                 <div>
                   <label className="block text-xs text-slate-400 font-medium mb-1 uppercase tracking-wider">По</label>
                   <input
-                    type="date"
+                    type="datetime-local"
                     value={dateTo}
                     min={dateFrom}
-                    max={todayStr()}
+                    max={nowStr()}
                     onChange={e => setDateTo(e.target.value)}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
                       outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/20 transition-colors

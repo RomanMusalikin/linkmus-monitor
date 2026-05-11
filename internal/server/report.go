@@ -175,19 +175,31 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 }
 
 // periodToRange возвращает (since, until) в формате RFC3339.
-// При period="custom" парсит from/to как "2006-01-02" и возвращает диапазон [начало дня from, конец дня to].
+// При period="custom" парсит from/to как "2006-01-02T15:04" или "2006-01-02".
 func periodToRange(period, from, to string) (string, string) {
 	now := time.Now().UTC()
 	until := now.Format(time.RFC3339)
 
 	if period == "custom" && from != "" && to != "" {
 		loc := time.Local
-		f, err1 := time.ParseInLocation("2006-01-02", from, loc)
-		t, err2 := time.ParseInLocation("2006-01-02", to, loc)
+		// пробуем datetime-local формат, затем date-only
+		parseCustom := func(s string) (time.Time, error) {
+			if t, err := time.ParseInLocation("2006-01-02T15:04", s, loc); err == nil {
+				return t, nil
+			}
+			return time.ParseInLocation("2006-01-02", s, loc)
+		}
+		f, err1 := parseCustom(from)
+		t, err2 := parseCustom(to)
 		if err1 == nil && err2 == nil {
 			since := f.UTC().Format(time.RFC3339)
-			// до конца последнего дня
-			untilCustom := t.Add(24*time.Hour - time.Second).UTC().Format(time.RFC3339)
+			// если to задан только датой — берём конец дня, иначе точное время
+			var untilCustom string
+			if len(to) == 10 {
+				untilCustom = t.Add(24*time.Hour - time.Second).UTC().Format(time.RFC3339)
+			} else {
+				untilCustom = t.UTC().Format(time.RFC3339)
+			}
 			return since, untilCustom
 		}
 	}
@@ -213,7 +225,9 @@ func periodToRange(period, from, to string) (string, string) {
 // periodLabel возвращает человекочитаемое название периода.
 func periodLabel(period, from, to string) string {
 	if period == "custom" && from != "" && to != "" {
-		return fmt.Sprintf("с %s по %s", from, to)
+		fLabel := strings.ReplaceAll(from, "T", " ")
+		tLabel := strings.ReplaceAll(to, "T", " ")
+		return fmt.Sprintf("с %s по %s", fLabel, tLabel)
 	}
 	switch period {
 	case "1h":
