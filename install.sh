@@ -656,10 +656,12 @@ do_delete() {
     rm -f /etc/systemd/system/mon-server.service
     systemctl daemon-reload
     rm -f "$SERVER_BIN"
-    rm -rf "$SERVER_DIR"
+    rm -rf "${SERVER_DIR:?}"
     rm -f /etc/nginx/sites-enabled/linkmus-monitor
     rm -f /etc/nginx/sites-available/linkmus-monitor
-    command -v nginx &>/dev/null && nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+    if command -v nginx &>/dev/null; then
+      nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+    fi
     caddy_remove_block
     [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
     echo -e "${GREEN}[ OK ]${RESET} Сервер полностью удалён."
@@ -672,7 +674,7 @@ do_delete() {
     systemctl disable mon-agent 2>/dev/null || true
     rm -f /etc/systemd/system/mon-agent.service
     systemctl daemon-reload
-    rm -rf "$AGENT_DIR"
+    rm -rf "${AGENT_DIR:?}"
     [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
     echo -e "${GREEN}[ OK ]${RESET} Агент полностью удалён."
   fi
@@ -715,15 +717,17 @@ uninstall_server() {
   systemctl daemon-reload
 
   rm -f "$SERVER_BIN"
-  rm -rf "$SERVER_DIR"
+  rm -rf "${SERVER_DIR:?}"
 
   rm -f /etc/nginx/sites-enabled/linkmus-monitor
   rm -f /etc/nginx/sites-available/linkmus-monitor
-  command -v nginx &>/dev/null && nginx -t && systemctl reload nginx 2>/dev/null || true
+  if command -v nginx &>/dev/null; then
+    nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+  fi
 
   caddy_cleanup_block
 
-  [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon
+  [ ! -f "$AGENT_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
 
   ok "Сервер полностью удалён."
 }
@@ -739,9 +743,9 @@ uninstall_agent() {
   rm -f /etc/systemd/system/mon-agent.service
   systemctl daemon-reload
 
-  rm -rf "$AGENT_DIR"
+  rm -rf "${AGENT_DIR:?}"
 
-  [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon
+  [ ! -f "$SERVER_BIN" ] && rm -f /usr/local/bin/mon /usr/bin/mon
 
   ok "Агент полностью удалён."
 }
