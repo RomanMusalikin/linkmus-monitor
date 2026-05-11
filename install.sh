@@ -305,17 +305,28 @@ PYEOF
   # При Caddy в Docker — разрешаем Docker-сетям доступ к конкретному порту на хосте.
   # ВАЖНО: ufw allow пересобирает iptables и сносит цепочки Docker (MASQUERADE и др.),
   # поэтому после изменения UFW перезапускаем Docker чтобы он восстановил свои правила.
+  local docker_restarted=false
   if [ "$caddy_mode" = "docker" ] && command -v ufw &>/dev/null && ufw status | grep -q "Status: active"; then
     ufw allow from 172.16.0.0/12 to any port "$port" comment "linkmus-monitor caddy-docker" >/dev/null 2>&1 || true
     ok "UFW: разрешён доступ из Docker-сети на порт ${port}"
     warn "UFW изменён — перезапускаю Docker для восстановления его iptables-правил..."
     systemctl restart docker >/dev/null 2>&1 || true
+    docker_restarted=true
     ok "Docker перезапущен"
   fi
 
   # Перезагружаем Caddy
   if [ "$caddy_mode" = "docker" ]; then
-    docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile
+    # After docker restart the container takes a few seconds to come back up — wait for it
+    if [ "$docker_restarted" = true ]; then
+      local i=0
+      info "Ожидаю запуска контейнера Caddy..."
+      while [ $i -lt 20 ] && ! docker exec "$caddy_container" true 2>/dev/null; do
+        sleep 1; i=$((i+1))
+      done
+    fi
+    docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || \
+      warn "caddy reload не сработал — Caddy подхватит новый конфиг при следующем старте контейнера"
   else
     caddy fmt --overwrite "$caddyfile" 2>/dev/null || true
     caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy
