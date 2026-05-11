@@ -105,6 +105,7 @@ install_server() {
 
   systemctl is-active --quiet mon-server 2>/dev/null && systemctl stop mon-server && info "Служба остановлена"
 
+  [ -f "$SERVER_BIN" ] && cp "$SERVER_BIN" "${SERVER_BIN}.bak" && info "Бэкап бинарника: ${SERVER_BIN}.bak"
   install -Dm755 "$tmp/mon-server" "$SERVER_BIN"
   ok "Бинарник: $SERVER_BIN"
 
@@ -123,6 +124,9 @@ install_server() {
   fi
   chown -R mon-monitor:mon-monitor "$SERVER_DATA" "$SERVER_WEB" 2>/dev/null || true
 
+  [ -f /etc/systemd/system/mon-server.service ] && \
+    cp /etc/systemd/system/mon-server.service /etc/systemd/system/mon-server.service.bak && \
+    info "Бэкап службы: mon-server.service.bak"
   cat > /etc/systemd/system/mon-server.service << SERVICE
 [Unit]
 Description=LinkMus Monitor Server
@@ -180,7 +184,12 @@ setup_nginx() {
   [ -n "$nginx_domain" ] || { warn "Домен не указан — Nginx не настроен"; return; }
   validate_domain "$nginx_domain"
 
-  if [ ! -f /etc/nginx/sites-available/linkmus-monitor ]; then
+  if [ -f /etc/nginx/sites-available/linkmus-monitor ]; then
+    cp /etc/nginx/sites-available/linkmus-monitor /etc/nginx/sites-available/linkmus-monitor.bak
+    info "Бэкап nginx конфига: linkmus-monitor.bak"
+    sed -i "s|proxy_pass http://127.0.0.1:[0-9]*|proxy_pass http://127.0.0.1:${port}|g" \
+      /etc/nginx/sites-available/linkmus-monitor
+  else
     cat > /etc/nginx/sites-available/linkmus-monitor << NGINX
 server {
     listen 80;
@@ -201,9 +210,6 @@ NGINX
       warn "Обнаружен дефолтный сайт Nginx (/etc/nginx/sites-enabled/default)"
       confirm "  Отключить его? (рекомендуется если он пустой)" && rm -f /etc/nginx/sites-enabled/default || true
     fi
-  else
-    sed -i "s|proxy_pass http://127.0.0.1:[0-9]*|proxy_pass http://127.0.0.1:${port}|g" \
-      /etc/nginx/sites-available/linkmus-monitor
   fi
   nginx -t && systemctl reload nginx
   ok "Nginx настроен: http://${nginx_domain}"
@@ -243,11 +249,13 @@ setup_caddy() {
 
   info "Caddy обнаружен (${caddy_mode}), Caddyfile: ${caddyfile}"
 
-  # Бэкап Caddyfile — сохраняем путь для автооткатa
+  # Бэкап Caddyfile — сохраняем путь для автооткатa и rollback
   local caddy_backup="${caddyfile}.bak-linkmus-$(date +%Y%m%d%H%M%S)"
   cp "$caddyfile" "$caddy_backup" && \
     info "Резервная копия: ${caddy_backup}" || \
     { warn "Не удалось создать резервную копию — прерываю настройку Caddy"; return; }
+  # Манифест для `mon server rollback`
+  printf 'CADDYFILE=%s\nCADDY_BAK=%s\n' "$caddyfile" "$caddy_backup" > "$SERVER_DIR/.caddy-bak"
 
   # Функция отката: восстанавливает Caddyfile и завершает установку с ошибкой
   caddy_rollback() {
@@ -458,6 +466,7 @@ install_agent() {
   systemctl is-active --quiet mon-agent 2>/dev/null && systemctl stop mon-agent && info "Служба остановлена"
 
   mkdir -p "$AGENT_DIR"
+  [ -f "$AGENT_BIN" ] && cp "$AGENT_BIN" "${AGENT_BIN}.bak" && info "Бэкап бинарника: ${AGENT_BIN}.bak"
   install -Dm755 "$tmp/mon-agent" "$AGENT_BIN"
   ok "Бинарник: $AGENT_BIN"
 
@@ -498,6 +507,9 @@ install_agent() {
     fi
   fi
 
+  [ -f /etc/systemd/system/mon-agent.service ] && \
+    cp /etc/systemd/system/mon-agent.service /etc/systemd/system/mon-agent.service.bak && \
+    info "Бэкап службы: mon-agent.service.bak"
   cat > /etc/systemd/system/mon-agent.service << SERVICE
 [Unit]
 Description=LinkMus Monitor Agent
@@ -556,8 +568,9 @@ usage() {
   echo -e "  ${BOLD}enable${RESET}   Включить автозапуск"
   echo -e "  ${BOLD}disable${RESET}  Выключить автозапуск"
   echo -e "  ${BOLD}logs${RESET}     Следить за логами (journalctl -f)"
-  echo -e "  ${BOLD}update${RESET}   Проверить обновления и установить при наличии"
-  echo -e "  ${BOLD}delete${RESET}   Полностью деинсталировать (служба, файлы, конфиг)"
+  echo -e "  ${BOLD}update${RESET}    Проверить обновления и установить при наличии"
+  echo -e "  ${BOLD}rollback${RESET}  Восстановить предыдущую версию из резервных копий"
+  echo -e "  ${BOLD}delete${RESET}    Полностью деинсталировать (служба, файлы, конфиг)"
   echo ""
   exit 1
 }
@@ -640,6 +653,7 @@ do_update() {
     curl -fsSL --progress-bar -o "$tmp/server.tar.gz" "$asset_url"
     tar -xzf "$tmp/server.tar.gz" -C "$tmp"
     systemctl is-active --quiet mon-server 2>/dev/null && systemctl stop mon-server
+    [ -f "$SERVER_BIN" ] && cp "$SERVER_BIN" "${SERVER_BIN}.bak"
     install -Dm755 "$tmp/mon-server" "$SERVER_BIN"
     mkdir -p "$SERVER_WEB"; rm -rf "${SERVER_WEB:?}"/*
     cp -r "$tmp/web-dist/." "$SERVER_WEB/"
@@ -682,6 +696,7 @@ do_update() {
     echo -e "${CYAN}[INFO]${RESET} Загрузка $latest_tag..."
     curl -fsSL --progress-bar -o "$tmp/mon-agent" "$asset_url"
     systemctl is-active --quiet mon-agent 2>/dev/null && systemctl stop mon-agent
+    [ -f "$AGENT_BIN" ] && cp "$AGENT_BIN" "${AGENT_BIN}.bak"
     install -Dm755 "$tmp/mon-agent" "$AGENT_BIN"
     echo "$latest_tag" > "$AGENT_VERSION"
     rm -rf "$tmp"
@@ -742,6 +757,85 @@ do_delete() {
   fi
 }
 
+do_rollback() {
+  local target="$1"
+  [ "$(id -u)" -eq 0 ] || { echo -e "${RED}[ERR]${RESET}  Нужны права root: sudo mon $target rollback"; exit 1; }
+
+  local found=false
+
+  if [ "$target" = "server" ]; then
+    echo -e "${CYAN}[INFO]${RESET} Доступные резервные копии сервера:"
+    [ -f "${SERVER_BIN}.bak" ]                              && found=true && echo "  - Бинарник:  ${SERVER_BIN}.bak"
+    [ -f "/etc/systemd/system/mon-server.service.bak" ]     && found=true && echo "  - Служба:    mon-server.service.bak"
+    [ -f "/etc/nginx/sites-available/linkmus-monitor.bak" ] && found=true && echo "  - Nginx:     linkmus-monitor.bak"
+    local caddy_bak="" caddyfile=""
+    if [ -f "$SERVER_DIR/.caddy-bak" ]; then
+      caddyfile=$(grep '^CADDYFILE=' "$SERVER_DIR/.caddy-bak" | cut -d= -f2-)
+      caddy_bak=$(grep '^CADDY_BAK='  "$SERVER_DIR/.caddy-bak" | cut -d= -f2-)
+      [ -f "$caddy_bak" ] && found=true && echo "  - Caddyfile: $caddy_bak"
+    fi
+    if [ "$found" = false ]; then
+      echo -e "${YELLOW}[WARN]${RESET} Резервных копий не найдено — откатить нечего."
+      exit 0
+    fi
+    echo ""
+    read -rp "  Восстановить перечисленные файлы? [y/N]: " ans </dev/tty
+    [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
+    systemctl stop mon-server 2>/dev/null || true
+    if [ -f "${SERVER_BIN}.bak" ]; then
+      cp "${SERVER_BIN}.bak" "$SERVER_BIN"
+      echo -e "${GREEN}[ OK ]${RESET} Бинарник восстановлен"
+    fi
+    if [ -f "/etc/systemd/system/mon-server.service.bak" ]; then
+      cp /etc/systemd/system/mon-server.service.bak /etc/systemd/system/mon-server.service
+      systemctl daemon-reload
+      echo -e "${GREEN}[ OK ]${RESET} Служба восстановлена"
+    fi
+    if [ -f "/etc/nginx/sites-available/linkmus-monitor.bak" ]; then
+      cp /etc/nginx/sites-available/linkmus-monitor.bak /etc/nginx/sites-available/linkmus-monitor
+      nginx -t 2>/dev/null && systemctl reload nginx 2>/dev/null || true
+      echo -e "${GREEN}[ OK ]${RESET} Nginx конфиг восстановлен"
+    fi
+    if [ -f "$caddy_bak" ] && [ -n "$caddyfile" ]; then
+      cp "$caddy_bak" "$caddyfile"
+      local caddy_container
+      caddy_container=$(docker ps --format '{{.Names}}' | grep -i caddy | head -1)
+      if [ -n "$caddy_container" ]; then
+        docker exec "$caddy_container" caddy reload --config /etc/caddy/Caddyfile 2>/dev/null || true
+      elif command -v caddy &>/dev/null; then
+        caddy reload --config "$caddyfile" 2>/dev/null || systemctl reload caddy 2>/dev/null || true
+      fi
+      echo -e "${GREEN}[ OK ]${RESET} Caddyfile восстановлен"
+    fi
+    systemctl start mon-server
+    echo -e "${GREEN}[ OK ]${RESET} Сервер откатан."
+
+  else
+    echo -e "${CYAN}[INFO]${RESET} Доступные резервные копии агента:"
+    [ -f "${AGENT_BIN}.bak" ]                             && found=true && echo "  - Бинарник: ${AGENT_BIN}.bak"
+    [ -f "/etc/systemd/system/mon-agent.service.bak" ]    && found=true && echo "  - Служба:   mon-agent.service.bak"
+    if [ "$found" = false ]; then
+      echo -e "${YELLOW}[WARN]${RESET} Резервных копий не найдено — откатить нечего."
+      exit 0
+    fi
+    echo ""
+    read -rp "  Восстановить перечисленные файлы? [y/N]: " ans </dev/tty
+    [[ "$ans" =~ ^[Yy]$ ]] || { echo "Отменено."; exit 0; }
+    systemctl stop mon-agent 2>/dev/null || true
+    if [ -f "${AGENT_BIN}.bak" ]; then
+      cp "${AGENT_BIN}.bak" "$AGENT_BIN"
+      echo -e "${GREEN}[ OK ]${RESET} Бинарник восстановлен"
+    fi
+    if [ -f "/etc/systemd/system/mon-agent.service.bak" ]; then
+      cp /etc/systemd/system/mon-agent.service.bak /etc/systemd/system/mon-agent.service
+      systemctl daemon-reload
+      echo -e "${GREEN}[ OK ]${RESET} Служба восстановлена"
+    fi
+    systemctl start mon-agent
+    echo -e "${GREEN}[ OK ]${RESET} Агент откатан."
+  fi
+}
+
 [ $# -lt 2 ] && usage
 case "$1" in
   server) SVC="mon-server" ;;
@@ -750,21 +844,22 @@ case "$1" in
   *) echo -e "${RED}Неизвестная цель:${RESET} $1"; usage ;;
 esac
 case "$2" in
-  start)   systemctl start   "$SVC" && echo -e "${GREEN}[OK]${RESET} $SVC запущен" ;;
-  stop)    systemctl stop    "$SVC" && echo -e "${GREEN}[OK]${RESET} $SVC остановлен" ;;
-  restart) systemctl restart "$SVC" && echo -e "${GREEN}[OK]${RESET} $SVC перезапущен" ;;
-  status)  systemctl status  "$SVC" --no-pager ;;
-  enable)  systemctl enable  "$SVC" && echo -e "${GREEN}[OK]${RESET} Автозапуск включён" ;;
-  disable) systemctl disable "$SVC" && echo -e "${GREEN}[OK]${RESET} Автозапуск выключен" ;;
-  logs)    journalctl -fu    "$SVC" ;;
-  update)  do_update "$1" ;;
-  delete)  do_delete "$1" ;;
+  start)    systemctl start   "$SVC" && echo -e "${GREEN}[OK]${RESET} $SVC запущен" ;;
+  stop)     systemctl stop    "$SVC" && echo -e "${GREEN}[OK]${RESET} $SVC остановлен" ;;
+  restart)  systemctl restart "$SVC" && echo -e "${GREEN}[OK]${RESET} $SVC перезапущен" ;;
+  status)   systemctl status  "$SVC" --no-pager ;;
+  enable)   systemctl enable  "$SVC" && echo -e "${GREEN}[OK]${RESET} Автозапуск включён" ;;
+  disable)  systemctl disable "$SVC" && echo -e "${GREEN}[OK]${RESET} Автозапуск выключен" ;;
+  logs)     journalctl -fu    "$SVC" ;;
+  update)   do_update   "$1" ;;
+  rollback) do_rollback "$1" ;;
+  delete)   do_delete   "$1" ;;
   *) echo -e "${RED}Неизвестная команда:${RESET} $2"; usage ;;
 esac
 MONEOF
   chmod +x /usr/local/bin/mon
   ln -sf /usr/local/bin/mon /usr/bin/mon
-  ok "CLI: mon server|agent start|stop|restart|status|enable|disable|logs|update|delete"
+  ok "CLI: mon server|agent start|stop|restart|status|enable|disable|logs|update|rollback|delete"
 }
 
 # ──────────────────────────────────────────────────────────────────────────────
