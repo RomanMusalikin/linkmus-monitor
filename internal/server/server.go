@@ -109,6 +109,7 @@ func Run() {
 	StartDataCleanup(dbConn)
 	StartHourlyAggregator(dbConn)
 	StartHalfHourlyAggregator(dbConn)
+	StartFifteenMinAggregator(dbConn)
 	StartAlertChecker(dbConn)
 
 	// Агент — без авторизации

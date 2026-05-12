@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// HourlyPoint — одна точка долгосрочной истории (nil = нет данных за этот час)
+// HourlyPoint — одна точка долгосрочной истории (nil = нет данных за этот интервал)
 type HourlyPoint struct {
 	Time      string   `json:"time"`
 	CPU       *float64 `json:"cpu"`
@@ -51,12 +51,100 @@ func StartHalfHourlyAggregator(db *sql.DB) {
 		run()
 		for {
 			now := time.Now()
-			// следующая отметка :00 или :30 плюс 1 минута
 			halfHour := now.Truncate(30 * time.Minute).Add(31 * time.Minute)
 			time.Sleep(time.Until(halfHour))
 			run()
 		}
 	}()
+}
+
+// StartFifteenMinAggregator агрегирует метрики в metrics_15min каждые 15 минут.
+func StartFifteenMinAggregator(db *sql.DB) {
+	run := func() {
+		if err := aggregateFifteenMin(db); err != nil {
+			log.Printf("⚠️  15min aggregator: %v", err)
+		}
+	}
+	go func() {
+		run()
+		for {
+			now := time.Now()
+			next := now.Truncate(15 * time.Minute).Add(16 * time.Minute)
+			time.Sleep(time.Until(next))
+			run()
+		}
+	}()
+}
+
+func aggregateFifteenMin(db *sql.DB) error {
+	rows, err := db.Query(`
+		SELECT
+			node_name,
+			strftime('%Y-%m-%dT%H:', timestamp) ||
+				CASE
+					WHEN CAST(strftime('%M', timestamp) AS INTEGER) < 15 THEN '00:00Z'
+					WHEN CAST(strftime('%M', timestamp) AS INTEGER) < 30 THEN '15:00Z'
+					WHEN CAST(strftime('%M', timestamp) AS INTEGER) < 45 THEN '30:00Z'
+					ELSE '45:00Z'
+				END AS bucket,
+			AVG(cpu_usage),
+			AVG(ram_usage),
+			AVG(ram_total),
+			AVG(disk_usage),
+			AVG(COALESCE(net_bytes_recv, 0)),
+			AVG(COALESCE(net_bytes_sent, 0)),
+			AVG(COALESCE(disk_read_sec, 0)),
+			AVG(COALESCE(disk_write_sec, 0))
+		FROM metrics
+		WHERE timestamp < strftime('%Y-%m-%dT%H:', 'now') ||
+			CASE
+				WHEN CAST(strftime('%M', 'now') AS INTEGER) < 15 THEN '00:00Z'
+				WHEN CAST(strftime('%M', 'now') AS INTEGER) < 30 THEN '15:00Z'
+				WHEN CAST(strftime('%M', 'now') AS INTEGER) < 45 THEN '30:00Z'
+				ELSE '45:00Z'
+			END
+		GROUP BY node_name, bucket
+	`)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+
+	type row struct {
+		name, bucket                                            string
+		cpu, ram, ramTotal, disk, recv, sent, dRead, dWrite float64
+	}
+	var agg []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.name, &r.bucket, &r.cpu, &r.ram, &r.ramTotal, &r.disk, &r.recv, &r.sent, &r.dRead, &r.dWrite); err == nil {
+			agg = append(agg, r)
+		}
+	}
+	rows.Close()
+
+	for _, r := range agg {
+		_, err := db.Exec(`
+			INSERT INTO metrics_15min(node_name, bucket, avg_cpu, avg_ram, avg_ram_total, avg_disk, avg_net_recv, avg_net_sent, avg_disk_read, avg_disk_write)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			ON CONFLICT(node_name, bucket) DO UPDATE SET
+				avg_cpu=excluded.avg_cpu,
+				avg_ram=excluded.avg_ram,
+				avg_ram_total=excluded.avg_ram_total,
+				avg_disk=excluded.avg_disk,
+				avg_net_recv=excluded.avg_net_recv,
+				avg_net_sent=excluded.avg_net_sent,
+				avg_disk_read=excluded.avg_disk_read,
+				avg_disk_write=excluded.avg_disk_write
+		`, r.name, r.bucket, r.cpu, r.ram, r.ramTotal, r.disk, r.recv, r.sent, r.dRead, r.dWrite)
+		if err != nil {
+			log.Printf("⚠️  15min upsert %s %s: %v", r.name, r.bucket, err)
+		}
+	}
+
+	db.Exec(`DELETE FROM metrics_15min WHERE bucket < strftime('%Y-%m-%dT%H:00:00Z', 'now', '-90 days')`)
+
+	return nil
 }
 
 func aggregateHalfHour(db *sql.DB) error {
@@ -86,7 +174,7 @@ func aggregateHalfHour(db *sql.DB) error {
 	defer rows.Close()
 
 	type row struct {
-		name, bucket                                           string
+		name, bucket                                            string
 		cpu, ram, ramTotal, disk, recv, sent, dRead, dWrite float64
 	}
 	var agg []row
@@ -123,7 +211,6 @@ func aggregateHalfHour(db *sql.DB) error {
 }
 
 func aggregateLastHour(db *sql.DB) error {
-	// Агрегируем все завершённые часы которых ещё нет в metrics_hourly
 	rows, err := db.Query(`
 		SELECT
 			node_name,
@@ -146,7 +233,7 @@ func aggregateLastHour(db *sql.DB) error {
 	defer rows.Close()
 
 	type row struct {
-		name, hour                                        string
+		name, hour                                          string
 		cpu, ram, ramTotal, disk, recv, sent, dRead, dWrite float64
 	}
 	var agg []row
@@ -177,13 +264,12 @@ func aggregateLastHour(db *sql.DB) error {
 		}
 	}
 
-	// Удаляем агрегаты старше 90 дней
 	db.Exec(`DELETE FROM metrics_hourly WHERE hour < strftime('%Y-%m-%dT%H:00:00Z', 'now', '-90 days')`)
 
 	return nil
 }
 
-// HandleNodeHistory — GET /api/history/{name}?range=7d|30d|90d
+// HandleNodeHistory — GET /api/history/{name}?range=1h|24h|7d|14d|30d
 func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
@@ -195,12 +281,13 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 
 	rangeParam := r.URL.Query().Get("range")
 
-	// Режим 1h — сырые метрики из таблицы metrics, агрегация по минутам
+	// Режим 1h — сырые метрики, интервал 10 секунд
 	if rangeParam == "1h" {
 		since := time.Now().UTC().Add(-time.Hour).Format(time.RFC3339)
 		rows, err := dbConn.Query(`
 			SELECT
-				strftime('%H:%M', datetime(timestamp, 'localtime')) || CASE WHEN CAST(strftime('%S', datetime(timestamp, 'localtime')) AS INTEGER) < 30 THEN ':00' ELSE ':30' END AS minute,
+				strftime('%H:%M:', datetime(timestamp, 'localtime')) ||
+					printf('%02d', (CAST(strftime('%S', datetime(timestamp, 'localtime')) AS INTEGER) / 10) * 10) AS bucket,
 				AVG(cpu_usage),
 				AVG(ram_usage),
 				AVG(ram_total),
@@ -211,7 +298,50 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 				AVG(COALESCE(disk_write_sec, 0))
 			FROM metrics
 			WHERE node_name = ? AND datetime(timestamp) >= datetime(?)
-			GROUP BY strftime('%Y-%m-%dT%H:%M', datetime(timestamp, 'localtime')) || CASE WHEN CAST(strftime('%S', datetime(timestamp, 'localtime')) AS INTEGER) < 30 THEN ':00' ELSE ':30' END
+			GROUP BY strftime('%Y-%m-%dT%H:%M:', datetime(timestamp, 'localtime')) ||
+				printf('%02d', (CAST(strftime('%S', datetime(timestamp, 'localtime')) AS INTEGER) / 10) * 10)
+			ORDER BY MIN(datetime(timestamp)) ASC
+		`, name, since)
+		if err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		var points []HourlyPoint
+		for rows.Next() {
+			var label string
+			var cpu, ram, ramTotal, disk, recv, sent, dRead, dWrite float64
+			if err := rows.Scan(&label, &cpu, &ram, &ramTotal, &disk, &recv, &sent, &dRead, &dWrite); err == nil {
+				c, ra, rt, d, rc, s, dr, dw := cpu, ram, ramTotal, disk, recv, sent, dRead, dWrite
+				points = append(points, HourlyPoint{Time: label, CPU: &c, RAM: &ra, RAMTotal: &rt, Disk: &d, NetRecv: &rc, NetSent: &s, DiskRead: &dr, DiskWrite: &dw})
+			}
+		}
+		if points == nil {
+			points = []HourlyPoint{}
+		}
+		json.NewEncoder(w).Encode(points)
+		return
+	}
+
+	// Режим 24h — агрегация по 3 минуты из сырых метрик
+	if rangeParam == "24h" {
+		since := time.Now().UTC().Add(-24 * time.Hour).Format(time.RFC3339)
+		rows, err := dbConn.Query(`
+			SELECT
+				strftime('%d.%m %H:', datetime(timestamp, 'localtime')) ||
+					printf('%02d', (CAST(strftime('%M', datetime(timestamp, 'localtime')) AS INTEGER) / 3) * 3) AS bucket,
+				AVG(cpu_usage),
+				AVG(ram_usage),
+				AVG(ram_total),
+				AVG(disk_usage),
+				AVG(COALESCE(net_bytes_recv, 0)),
+				AVG(COALESCE(net_bytes_sent, 0)),
+				AVG(COALESCE(disk_read_sec, 0)),
+				AVG(COALESCE(disk_write_sec, 0))
+			FROM metrics
+			WHERE node_name = ? AND datetime(timestamp) >= datetime(?)
+			GROUP BY strftime('%Y-%m-%dT%H:', datetime(timestamp, 'localtime')) ||
+				printf('%02d', (CAST(strftime('%M', datetime(timestamp, 'localtime')) AS INTEGER) / 3) * 3)
 			ORDER BY MIN(datetime(timestamp)) ASC
 		`, name, since)
 		if err != nil {
@@ -236,24 +366,25 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var days int
-	use30min := false
+	var step time.Duration
+	var use15min, use30min bool
+
 	switch rangeParam {
 	case "7d":
 		days = 7
-		use30min = true
+		step = 15 * time.Minute
+		use15min = true
 	case "14d":
 		days = 14
+		step = 30 * time.Minute
 		use30min = true
 	case "30d":
 		days = 30
+		step = time.Hour
 	default:
 		days = 7
-		use30min = true
-	}
-
-	step := time.Hour
-	if use30min {
-		step = 30 * time.Minute
+		step = 15 * time.Minute
+		use15min = true
 	}
 
 	since := time.Now().UTC().Add(-time.Duration(days) * 24 * time.Hour).Truncate(step)
@@ -263,7 +394,30 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 	}
 	dataMap := make(map[time.Time]rowData)
 
-	if use30min {
+	switch {
+	case use15min:
+		rows, err := dbConn.Query(`
+			SELECT bucket, avg_cpu, avg_ram, avg_ram_total, avg_disk, avg_net_recv, avg_net_sent,
+			       COALESCE(avg_disk_read, 0), COALESCE(avg_disk_write, 0)
+			FROM metrics_15min
+			WHERE node_name = ? AND bucket >= ?
+			ORDER BY bucket ASC
+		`, name, since.Format(time.RFC3339))
+		if err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var bucketStr string
+			var d rowData
+			if err := rows.Scan(&bucketStr, &d.cpu, &d.ram, &d.ramTotal, &d.disk, &d.recv, &d.sent, &d.dRead, &d.dWrite); err == nil {
+				if t, err := time.Parse(time.RFC3339, bucketStr); err == nil {
+					dataMap[t.Truncate(step)] = d
+				}
+			}
+		}
+	case use30min:
 		rows, err := dbConn.Query(`
 			SELECT bucket, avg_cpu, avg_ram, avg_ram_total, avg_disk, avg_net_recv, avg_net_sent,
 			       COALESCE(avg_disk_read, 0), COALESCE(avg_disk_write, 0)
@@ -285,7 +439,7 @@ func HandleNodeHistory(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-	} else {
+	default:
 		rows, err := dbConn.Query(`
 			SELECT hour, avg_cpu, avg_ram, avg_ram_total, avg_disk, avg_net_recv, avg_net_sent,
 			       COALESCE(avg_disk_read, 0), COALESCE(avg_disk_write, 0)

@@ -197,7 +197,7 @@ func MigrateDB(db *sql.DB) {
 		dns_port    INTEGER DEFAULT 53
 	)`)
 
-	// 30-минутная агрегация метрик — используется для графиков 7d/14d
+	// 30-минутная агрегация метрик — используется для графиков 14d
 	db.Exec(`
 	CREATE TABLE IF NOT EXISTS metrics_30min (
 		node_name      TEXT    NOT NULL,
@@ -213,6 +213,23 @@ func MigrateDB(db *sql.DB) {
 		PRIMARY KEY (node_name, bucket)
 	)`)
 	db.Exec(`CREATE INDEX IF NOT EXISTS idx_30min_node_bucket ON metrics_30min(node_name, bucket)`)
+
+	// 15-минутная агрегация метрик — используется для графика 7d
+	db.Exec(`
+	CREATE TABLE IF NOT EXISTS metrics_15min (
+		node_name      TEXT    NOT NULL,
+		bucket         TEXT    NOT NULL,
+		avg_cpu        REAL    DEFAULT 0,
+		avg_ram        REAL    DEFAULT 0,
+		avg_ram_total  REAL    DEFAULT 0,
+		avg_disk       REAL    DEFAULT 0,
+		avg_net_recv   REAL    DEFAULT 0,
+		avg_net_sent   REAL    DEFAULT 0,
+		avg_disk_read  REAL    DEFAULT 0,
+		avg_disk_write REAL    DEFAULT 0,
+		PRIMARY KEY (node_name, bucket)
+	)`)
+	db.Exec(`CREATE INDEX IF NOT EXISTS idx_15min_node_bucket ON metrics_15min(node_name, bucket)`)
 
 	// Переопределения портов для конкретных узлов (NULL = использовать глобальный дефолт)
 	db.Exec(`
