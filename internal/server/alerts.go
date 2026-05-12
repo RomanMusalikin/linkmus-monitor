@@ -147,7 +147,7 @@ func checkAlerts(db *sql.DB) {
 
 	if emailOK || tgOK {
 		for _, ch := range changes {
-			ts := time.Now().Format("02.01.2006 15:04:05")
+			ts := time.Now().In(time.FixedZone("Moscow", 3*60*60)).Format("02.01.2006 15:04:05 MSK")
 			if ch.wentOffline {
 				if emailOK {
 					subj := fmt.Sprintf("🔴 Узел недоступен: %s", ch.displayName)
@@ -201,7 +201,7 @@ func checkAlerts(db *sql.DB) {
 		if s.CPUThreshold > 0 && int(n.CPU) >= s.CPUThreshold {
 			key := n.Name + ":cpu"
 			if canAlert(key, s.CooldownMin) {
-				ts := time.Now().Format("02.01.2006 15:04:05")
+				ts := time.Now().In(time.FixedZone("Moscow", 3*60*60)).Format("02.01.2006 15:04:05 MSK")
 				if emailOK {
 					subject := fmt.Sprintf("⚠️ CPU %d%% на узле %s", int(n.CPU), displayName)
 					body := fmt.Sprintf("Узел: %s\nМетрика: CPU\nЗначение: %d%%\nПорог: %d%%\nВремя: %s",
@@ -229,7 +229,7 @@ func checkAlerts(db *sql.DB) {
 			if ramPct >= s.RAMThreshold {
 				key := n.Name + ":ram"
 				if canAlert(key, s.CooldownMin) {
-					ts := time.Now().Format("02.01.2006 15:04:05")
+					ts := time.Now().In(time.FixedZone("Moscow", 3*60*60)).Format("02.01.2006 15:04:05 MSK")
 					if emailOK {
 						subject := fmt.Sprintf("⚠️ RAM %d%% на узле %s", ramPct, displayName)
 						body := fmt.Sprintf("Узел: %s\nМетрика: RAM\nЗначение: %d%% (%.1f / %.1f GB)\nПорог: %d%%\nВремя: %s",
