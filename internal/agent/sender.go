@@ -39,5 +39,7 @@ func SendToServer(serverURL string, payload MetricPayload) {
 
 	if resp.StatusCode != http.StatusOK {
 		log.Printf("Сервер вернул ошибку: %s", resp.Status)
+		return
 	}
+	log.Printf("Метрики отправлены → %s", serverURL)
 }
