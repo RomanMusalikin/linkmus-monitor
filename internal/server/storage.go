@@ -165,8 +165,9 @@ func MigrateDB(db *sql.DB) {
 
 	// Миграции: добавляем новые колонки если их ещё нет
 	migrations := []string{
-		`ALTER TABLE metrics_hourly ADD COLUMN avg_disk_read  REAL DEFAULT 0`,
-		`ALTER TABLE metrics_hourly ADD COLUMN avg_disk_write REAL DEFAULT 0`,
+		`ALTER TABLE metrics_hourly ADD COLUMN avg_disk_read   REAL DEFAULT 0`,
+		`ALTER TABLE metrics_hourly ADD COLUMN avg_disk_write  REAL DEFAULT 0`,
+		`ALTER TABLE metrics_hourly ADD COLUMN avg_load_avg_1  REAL DEFAULT 0`,
 		`ALTER TABLE alert_settings ADD COLUMN tg_bot_token TEXT    DEFAULT ''`,
 		`ALTER TABLE alert_settings ADD COLUMN tg_chat_id   TEXT    DEFAULT ''`,
 		`ALTER TABLE alert_settings ADD COLUMN tg_topic_id  INTEGER DEFAULT 0`,

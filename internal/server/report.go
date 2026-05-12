@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -125,24 +126,41 @@ type ReportRequest struct {
 }
 
 type nodeStats struct {
-	Name       string
+	Name        string
 	DisplayName string
-	OS         string
-	IP         string
-	Online     bool
-	LastSeen   string
+	OS          string
+	IP          string
+	Online      bool
+	LastSeen    string
 
-	AvgCPU  float64
-	MaxCPU  float64
-	MinCPU  float64
-	AvgRAM  float64
-	MaxRAM  float64
-	RAMTotal float64
-	AvgDisk float64
-	MaxDisk float64
+	AvgCPU     float64
+	MaxCPU     float64
+	MinCPU     float64
+	StddevCPU  float64 // стандартное отклонение CPU
+	AvgRAM     float64
+	MaxRAM     float64
+	RAMTotal   float64
+	AvgDisk    float64
+	MaxDisk    float64
 	AvgNetRecv float64
 	AvgNetSent float64
-	Samples int
+	Samples    int
+
+	// Превышения порогов
+	CpuAbove60 int // точек с CPU > 60%
+	CpuAbove80 int // точек с CPU > 80%
+	RamAbove75 int // точек с RAM > 75%
+	RamAbove90 int // точек с RAM > 90%
+
+	// Load Average
+	AvgLoad1 float64
+	MaxLoad1 float64
+	AvgLoad5 float64
+
+	// Нагрузка по времени суток (среднее CPU)
+	SlotNight   float64 // 00–08
+	SlotDay     float64 // 08–20
+	SlotEvening float64 // 20–24
 }
 
 // HandleReport — POST /api/report
@@ -242,7 +260,8 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 					AVG(avg_ram), MAX(avg_ram), AVG(avg_ram_total),
 					AVG(avg_disk), MAX(avg_disk),
 					AVG(avg_net_recv), AVG(avg_net_sent),
-					COUNT(*)
+					COUNT(*),
+					COALESCE(AVG(avg_load_avg_1), 0), COALESCE(MAX(avg_load_avg_1), 0)
 				FROM metrics_hourly
 				WHERE node_name = ? AND hour >= ? AND hour <= ?
 			`, name, since, until)
@@ -252,15 +271,20 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 				&s.AvgDisk, &s.MaxDisk,
 				&s.AvgNetRecv, &s.AvgNetSent,
 				&s.Samples,
+				&s.AvgLoad1, &s.MaxLoad1,
 			)
 		} else {
+			// stddev = sqrt(avg(x²) - avg(x)²)
+			var avgSq float64
 			row := db.QueryRow(`
 				SELECT
 					AVG(cpu_usage), MAX(cpu_usage), MIN(cpu_usage),
 					AVG(ram_usage), MAX(ram_usage), AVG(ram_total),
 					AVG(disk_usage), MAX(disk_usage),
 					AVG(COALESCE(net_bytes_recv,0)), AVG(COALESCE(net_bytes_sent,0)),
-					COUNT(*)
+					COUNT(*),
+					AVG(cpu_usage * cpu_usage),
+					COALESCE(AVG(load_avg_1), 0), COALESCE(MAX(load_avg_1), 0), COALESCE(AVG(load_avg_5), 0)
 				FROM metrics
 				WHERE node_name = ? AND timestamp >= ? AND timestamp <= ?
 			`, name, since, until)
@@ -270,12 +294,34 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 				&s.AvgDisk, &s.MaxDisk,
 				&s.AvgNetRecv, &s.AvgNetSent,
 				&s.Samples,
+				&avgSq,
+				&s.AvgLoad1, &s.MaxLoad1, &s.AvgLoad5,
 			)
+			s.StddevCPU = math.Sqrt(math.Max(0, avgSq-s.AvgCPU*s.AvgCPU))
 		}
 
 		if s.Samples == 0 {
 			continue
 		}
+
+		// Превышения порогов и временные слоты — всегда из таблицы metrics
+		db.QueryRow(`
+			SELECT
+				SUM(CASE WHEN cpu_usage > 60 THEN 1 ELSE 0 END),
+				SUM(CASE WHEN cpu_usage > 80 THEN 1 ELSE 0 END),
+				SUM(CASE WHEN ram_total > 0 AND ram_usage / ram_total > 0.75 THEN 1 ELSE 0 END),
+				SUM(CASE WHEN ram_total > 0 AND ram_usage / ram_total > 0.90 THEN 1 ELSE 0 END),
+				AVG(CASE WHEN CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) BETWEEN 0  AND 7  THEN cpu_usage END),
+				AVG(CASE WHEN CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) BETWEEN 8  AND 19 THEN cpu_usage END),
+				AVG(CASE WHEN CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) BETWEEN 20 AND 23 THEN cpu_usage END)
+			FROM metrics
+			WHERE node_name = ? AND timestamp >= ? AND timestamp <= ?
+		`, name, since, until).Scan(
+			&s.CpuAbove60, &s.CpuAbove80,
+			&s.RamAbove75, &s.RamAbove90,
+			&s.SlotNight, &s.SlotDay, &s.SlotEvening,
+		)
+
 		result = append(result, s)
 	}
 	return result
@@ -379,8 +425,24 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 		} else {
 			sb.WriteString(fmt.Sprintf("  Статус: ОФЛАЙН (последний раз онлайн: %s)\n", s.LastSeen))
 		}
-		sb.WriteString(fmt.Sprintf("  CPU: среднее %.1f%%, максимум %.1f%%, минимум %.1f%%\n",
+		sb.WriteString(fmt.Sprintf("  CPU: среднее %.1f%%, максимум %.1f%%, минимум %.1f%%",
 			s.AvgCPU, s.MaxCPU, s.MinCPU))
+		if s.StddevCPU > 0 {
+			sb.WriteString(fmt.Sprintf(", нестабильность (σ) %.1f%%", s.StddevCPU))
+		}
+		sb.WriteString("\n")
+		if s.CpuAbove60 > 0 || s.CpuAbove80 > 0 {
+			sb.WriteString(fmt.Sprintf("  CPU превышения: >60%% — %d раз, >80%% — %d раз (из %d точек)\n",
+				s.CpuAbove60, s.CpuAbove80, s.Samples))
+		}
+		if s.SlotDay > 0 || s.SlotNight > 0 || s.SlotEvening > 0 {
+			sb.WriteString(fmt.Sprintf("  CPU по времени суток: ночь(00-08) %.1f%%, день(08-20) %.1f%%, вечер(20-24) %.1f%%\n",
+				s.SlotNight, s.SlotDay, s.SlotEvening))
+		}
+		if s.AvgLoad1 > 0 {
+			sb.WriteString(fmt.Sprintf("  Load Average: 1м %.2f, 5м %.2f, пиковый 1м %.2f\n",
+				s.AvgLoad1, s.AvgLoad5, s.MaxLoad1))
+		}
 
 		ramPct := 0.0
 		maxRamPct := 0.0
@@ -390,6 +452,10 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 		}
 		sb.WriteString(fmt.Sprintf("  RAM: среднее %.2f / %.2f ГБ (%.1f%%), пиковое %.2f ГБ (%.1f%%)\n",
 			s.AvgRAM, s.RAMTotal, ramPct, s.MaxRAM, maxRamPct))
+		if s.RamAbove75 > 0 || s.RamAbove90 > 0 {
+			sb.WriteString(fmt.Sprintf("  RAM превышения: >75%% — %d раз, >90%% — %d раз\n",
+				s.RamAbove75, s.RamAbove90))
+		}
 		sb.WriteString(fmt.Sprintf("  Диск: среднее %.1f%%, максимум %.1f%%\n",
 			s.AvgDisk, s.MaxDisk))
 		sb.WriteString(fmt.Sprintf("  Сеть: среднее получение %.1f КБ/с, отправка %.1f КБ/с\n",

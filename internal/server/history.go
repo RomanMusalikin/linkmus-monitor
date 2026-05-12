@@ -222,7 +222,8 @@ func aggregateLastHour(db *sql.DB) error {
 			AVG(COALESCE(net_bytes_recv, 0)),
 			AVG(COALESCE(net_bytes_sent, 0)),
 			AVG(COALESCE(disk_read_sec, 0)),
-			AVG(COALESCE(disk_write_sec, 0))
+			AVG(COALESCE(disk_write_sec, 0)),
+			AVG(COALESCE(load_avg_1, 0))
 		FROM metrics
 		WHERE timestamp < strftime('%Y-%m-%dT%H:00:00Z', 'now')
 		GROUP BY node_name, hour
@@ -233,13 +234,13 @@ func aggregateLastHour(db *sql.DB) error {
 	defer rows.Close()
 
 	type row struct {
-		name, hour                                          string
-		cpu, ram, ramTotal, disk, recv, sent, dRead, dWrite float64
+		name, hour                                                   string
+		cpu, ram, ramTotal, disk, recv, sent, dRead, dWrite, load1  float64
 	}
 	var agg []row
 	for rows.Next() {
 		var r row
-		if err := rows.Scan(&r.name, &r.hour, &r.cpu, &r.ram, &r.ramTotal, &r.disk, &r.recv, &r.sent, &r.dRead, &r.dWrite); err == nil {
+		if err := rows.Scan(&r.name, &r.hour, &r.cpu, &r.ram, &r.ramTotal, &r.disk, &r.recv, &r.sent, &r.dRead, &r.dWrite, &r.load1); err == nil {
 			agg = append(agg, r)
 		}
 	}
@@ -247,8 +248,8 @@ func aggregateLastHour(db *sql.DB) error {
 
 	for _, r := range agg {
 		_, err := db.Exec(`
-			INSERT INTO metrics_hourly(node_name, hour, avg_cpu, avg_ram, avg_ram_total, avg_disk, avg_net_recv, avg_net_sent, avg_disk_read, avg_disk_write)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			INSERT INTO metrics_hourly(node_name, hour, avg_cpu, avg_ram, avg_ram_total, avg_disk, avg_net_recv, avg_net_sent, avg_disk_read, avg_disk_write, avg_load_avg_1)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 			ON CONFLICT(node_name, hour) DO UPDATE SET
 				avg_cpu=excluded.avg_cpu,
 				avg_ram=excluded.avg_ram,
@@ -257,8 +258,9 @@ func aggregateLastHour(db *sql.DB) error {
 				avg_net_recv=excluded.avg_net_recv,
 				avg_net_sent=excluded.avg_net_sent,
 				avg_disk_read=excluded.avg_disk_read,
-				avg_disk_write=excluded.avg_disk_write
-		`, r.name, r.hour, r.cpu, r.ram, r.ramTotal, r.disk, r.recv, r.sent, r.dRead, r.dWrite)
+				avg_disk_write=excluded.avg_disk_write,
+				avg_load_avg_1=excluded.avg_load_avg_1
+		`, r.name, r.hour, r.cpu, r.ram, r.ramTotal, r.disk, r.recv, r.sent, r.dRead, r.dWrite, r.load1)
 		if err != nil {
 			log.Printf("⚠️  hourly upsert %s %s: %v", r.name, r.hour, err)
 		}
