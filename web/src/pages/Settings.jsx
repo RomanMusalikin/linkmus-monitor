@@ -316,12 +316,13 @@ export default function Settings() {
               </div>
             )}
 
-            <form onSubmit={handleAddService} className="flex gap-2">
+            <div className="flex gap-2">
               <div className="flex-1">
                 <Input
                   type="text"
                   value={newSvcName}
                   onChange={e => setNewSvcName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleAddService(e)}
                   placeholder="Название (например, PostgreSQL)"
                   maxLength={40}
                 />
@@ -332,11 +333,13 @@ export default function Settings() {
                   inputMode="numeric"
                   value={newSvcPort}
                   onChange={e => setNewSvcPort(e.target.value.replace(/[^0-9]/g, ''))}
+                  onKeyDown={e => e.key === 'Enter' && handleAddService(e)}
                   placeholder="Порт"
                 />
               </div>
               <button
-                type="submit"
+                type="button"
+                onClick={handleAddService}
                 disabled={svcAdding || !newSvcName.trim() || !newSvcPort}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-500/20 text-violet-300 border border-violet-500/30
                   hover:bg-violet-500/30 transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
@@ -344,7 +347,7 @@ export default function Settings() {
                 <Plus className="w-4 h-4" />
                 Добавить
               </button>
-            </form>
+            </div>
             {svcMsg && <p className="text-xs mt-2 text-red-400">{svcMsg}</p>}
           </Section>
         </form>

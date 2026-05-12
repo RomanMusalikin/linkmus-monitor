@@ -1252,12 +1252,13 @@ export default function NodeDetail() {
                   <div key={key} className="flex items-center gap-3">
                     <span className="text-xs text-slate-400 w-16 shrink-0">{label}</span>
                     <input
-                      type="number"
-                      min="1" max="65535"
+                      type="text"
+                      inputMode="numeric"
                       placeholder={String(def)}
                       value={portDraft[key] ?? ''}
                       onChange={e => {
-                        const v = e.target.value === '' ? null : parseInt(e.target.value, 10);
+                        const raw = e.target.value.replace(/[^0-9]/g, '');
+                        const v = raw === '' ? null : Math.min(65535, Math.max(1, parseInt(raw, 10)));
                         setPortDraft(d => ({ ...d, [key]: v }));
                       }}
                       className="w-24 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400"
