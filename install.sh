@@ -924,15 +924,11 @@ echo ""
 
 echo -e "  ${BOLD}1${RESET}) Установить / обновить сервер"
 echo -e "  ${BOLD}2${RESET}) Установить / обновить агент Linux"
-echo -e "  ${BOLD}3${RESET}) Удалить сервер (полная очистка)"
-echo -e "  ${BOLD}4${RESET}) Удалить агент Linux (полная очистка)"
 echo ""
-read -rp "Выбор [1-4]: " choice </dev/tty
+read -rp "Выбор [1-2]: " choice </dev/tty
 
 case "$choice" in
   1) install_server ;;
   2) install_agent ;;
-  3) uninstall_server ;;
-  4) uninstall_agent ;;
   *) die "Неверный выбор: $choice" ;;
 esac
