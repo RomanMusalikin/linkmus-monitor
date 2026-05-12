@@ -1183,11 +1183,9 @@ export default function NodeDetail() {
                 </div>
                 {[
                   { key: 'ssh',   label: 'SSH' },
-                  ...(isWindows ? [
-                    { key: 'rdp',   label: 'Remote Desktop (RDP)' },
-                    { key: 'smb',   label: 'File Sharing (SMB)' },
-                    { key: 'winrm', label: 'WinRM' },
-                  ] : []),
+                  { key: 'rdp',   label: 'Remote Desktop (RDP)' },
+                  { key: 'smb',   label: 'File Sharing (SMB)' },
+                  { key: 'winrm', label: 'WinRM' },
                   { key: 'http',  label: 'HTTP' },
                   ...(node.customServices || []).map(svc => ({ key: `custom_${svc.id}`, label: svc.name })),
                 ].map(({ key, label }) => (
