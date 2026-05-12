@@ -48,6 +48,8 @@ func GetAlertSettings(db *sql.DB) AlertSettings {
 }
 
 func SaveAlertSettings(db *sql.DB, s AlertSettings) error {
+	s.TGBotToken = strings.TrimSpace(s.TGBotToken)
+	s.TGChatID   = strings.TrimSpace(s.TGChatID)
 	_, err := db.Exec(`INSERT INTO alert_settings
 		(id,smtp_host,smtp_port,smtp_user,smtp_pass,from_email,to_email,
 		 cpu_threshold,ram_threshold,cooldown_min,enabled,
@@ -188,9 +190,15 @@ func checkAlerts(db *sql.DB) {
 // ── Telegram-отправка ────────────────────────────────────────────────────────
 
 func sendTelegram(s AlertSettings, text string) error {
-	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", s.TGBotToken)
+	token := strings.TrimSpace(s.TGBotToken)
+	chatID := strings.TrimSpace(s.TGChatID)
+	if token == "" || chatID == "" {
+		return fmt.Errorf("не заполнены токен бота или Chat ID")
+	}
+
+	apiURL := fmt.Sprintf("https://api.telegram.org/bot%s/sendMessage", token)
 	params := url.Values{
-		"chat_id":    {s.TGChatID},
+		"chat_id":    {chatID},
 		"text":       {text},
 		"parse_mode": {"Markdown"},
 	}
@@ -200,18 +208,23 @@ func sendTelegram(s AlertSettings, text string) error {
 
 	resp, err := http.PostForm(apiURL, params)
 	if err != nil {
-		return err
+		return fmt.Errorf("сетевая ошибка: %w", err)
 	}
 	defer resp.Body.Close()
 	body, _ := io.ReadAll(resp.Body)
 
 	var result struct {
 		OK          bool   `json:"ok"`
+		ErrorCode   int    `json:"error_code"`
 		Description string `json:"description"`
 	}
 	json.Unmarshal(body, &result)
 	if !result.OK {
-		return fmt.Errorf("telegram API: %s", result.Description)
+		desc := result.Description
+		if desc == "Not Found" {
+			desc = "Not Found — проверьте токен бота (возможно, скопирован с лишними символами или бот удалён)"
+		}
+		return fmt.Errorf("Telegram: %s", desc)
 	}
 	return nil
 }
