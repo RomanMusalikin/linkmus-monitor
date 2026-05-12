@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield, Bot, Plus, Trash2 } from 'lucide-react';
 import { getAlertSettings, saveAlertSettings, sendTestEmail, sendTestTelegram, getPortSettings, savePortSettings, getGigachatSettings, saveGigachatSettings, getCustomServices, createCustomService, deleteCustomService } from '../lib/api';
+import { useNodesContext } from '../context/NodesContext';
 
 function Field({ label, hint, children }) {
   return (
@@ -69,6 +70,7 @@ const defaultPortSettings = {
 };
 
 export default function Settings() {
+  const { refresh: refreshNodes } = useNodesContext();
   const [tab, setTab] = useState('notifications');
   const [s, setS] = useState(defaultSettings);
   const [loading, setLoading] = useState(true);
@@ -119,6 +121,7 @@ export default function Settings() {
       setCustomServices(prev => [...prev, svc]);
       setNewSvcName('');
       setNewSvcPort('');
+      refreshNodes?.();
     } catch (err) {
       setSvcMsg('Ошибка: ' + err.message);
     } finally {
@@ -131,6 +134,7 @@ export default function Settings() {
     try {
       await deleteCustomService(id);
       setCustomServices(prev => prev.filter(s => s.id !== id));
+      refreshNodes?.();
     } catch (err) {
       setSvcMsg('Ошибка удаления: ' + err.message);
       setTimeout(() => setSvcMsg(''), 3000);

@@ -1235,6 +1235,7 @@ export default function NodeDetail() {
                         await saveNodeServiceVisibility(nodeId, visibilityDraft);
                         setServiceVisibility(visibilityDraft);
                         setEditingVisibility(false);
+                        refresh?.();
                       } catch { /* ignore */ }
                       setSavingVisibility(false);
                     }}

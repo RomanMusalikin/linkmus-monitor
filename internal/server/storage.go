@@ -458,6 +458,7 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 	rows.Close() // явно закрываем до history-запросов
 
 	aliases := GetAllAliases(db)
+	allVisibility := GetAllNodeServiceVisibility(db)
 
 	var nodes []NodeSummary
 	for _, r := range raws {
@@ -547,7 +548,8 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			HTTPMs:         probe.HTTPMs,
 			HTTPSMs:        probe.HTTPSMs,
 			WinRMMs:        probe.WinRMMs,
-			CustomServices: GetCustomProbe(r.ip),
+			CustomServices:    GetCustomProbe(r.ip),
+			ServiceVisibility: allVisibility[r.name],
 			SNMPCollected:  snmp.Collected,
 			SNMPSysUpTime:  snmp.SysUpTimeSec,
 			SNMPSysName:    snmp.SysName,

@@ -62,6 +62,68 @@ func GetCustomProbe(ip string) []CustomServiceResult {
 	return r
 }
 
+// RemoveCustomServiceFromProbeCache синхронно удаляет сервис из кэша проб всех IP.
+func RemoveCustomServiceFromProbeCache(serviceID int) {
+	customProbeCacheMu.Lock()
+	defer customProbeCacheMu.Unlock()
+	for ip, results := range customProbeCache {
+		filtered := results[:0]
+		for _, r := range results {
+			if r.ID != serviceID {
+				filtered = append(filtered, r)
+			}
+		}
+		customProbeCache[ip] = filtered
+	}
+}
+
+// AddCustomServiceToProbeCache немедленно добавляет новый сервис в кэш проб всех IP
+// (reachable=false) и запускает фоновую пробу для получения реального статуса.
+func AddCustomServiceToProbeCache(db *sql.DB, svc CustomService) {
+	customProbeCacheMu.Lock()
+	for ip := range customProbeCache {
+		customProbeCache[ip] = append(customProbeCache[ip], CustomServiceResult{
+			ID: svc.ID, Name: svc.Name, Port: svc.Port,
+		})
+	}
+	customProbeCacheMu.Unlock()
+
+	go func() {
+		rows, err := db.Query(`SELECT DISTINCT ip FROM metrics WHERE ip != '' AND ip != '127.0.0.1'`)
+		if err != nil {
+			return
+		}
+		var ips []string
+		for rows.Next() {
+			var ip string
+			if rows.Scan(&ip) == nil && ip != "" {
+				ips = append(ips, ip)
+			}
+		}
+		rows.Close()
+
+		var wg sync.WaitGroup
+		for _, ip := range ips {
+			wg.Add(1)
+			go func(ip string) {
+				defer wg.Done()
+				reachable, ms := probeTCP(ip, fmt.Sprintf("%d", svc.Port))
+				customProbeCacheMu.Lock()
+				for i, r := range customProbeCache[ip] {
+					if r.ID == svc.ID {
+						customProbeCache[ip][i].Reachable = reachable
+						customProbeCache[ip][i].Ms = ms
+						break
+					}
+				}
+				customProbeCacheMu.Unlock()
+			}(ip)
+		}
+		wg.Wait()
+		InvalidateNodesCache(db)
+	}()
+}
+
 func probeTCP(host, port string) (bool, float64) {
 	start := time.Now()
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 2*time.Second)

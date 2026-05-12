@@ -469,6 +469,8 @@ func handleCustomServices(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 			return
 		}
+		AddCustomServiceToProbeCache(dbConn, svc)
+		InvalidateNodesCache(dbConn)
 		json.NewEncoder(w).Encode(svc)
 	case http.MethodDelete:
 		// /api/settings/services/{id}
@@ -482,6 +484,8 @@ func handleCustomServices(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 			return
 		}
+		RemoveCustomServiceFromProbeCache(id)
+		InvalidateNodesCache(dbConn)
 		w.WriteHeader(http.StatusOK)
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)

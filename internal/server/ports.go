@@ -160,6 +160,27 @@ func SaveNodeCustomServicePorts(db *sql.DB, nodeName string, ports map[int]int) 
 // Если ключа нет — сервис считается видимым (дефолт).
 type NodeServiceVisibility map[string]bool
 
+// GetAllNodeServiceVisibility загружает настройки видимости всех узлов одним запросом.
+func GetAllNodeServiceVisibility(db *sql.DB) map[string]NodeServiceVisibility {
+	rows, err := db.Query(`SELECT node_name, service_key, visible FROM node_service_visibility`)
+	if err != nil {
+		return map[string]NodeServiceVisibility{}
+	}
+	defer rows.Close()
+	result := map[string]NodeServiceVisibility{}
+	for rows.Next() {
+		var nodeName, key string
+		var visible int
+		if rows.Scan(&nodeName, &key, &visible) == nil {
+			if result[nodeName] == nil {
+				result[nodeName] = NodeServiceVisibility{}
+			}
+			result[nodeName][key] = visible != 0
+		}
+	}
+	return result
+}
+
 func GetNodeServiceVisibility(db *sql.DB, nodeName string) NodeServiceVisibility {
 	rows, err := db.Query(`SELECT service_key, visible FROM node_service_visibility WHERE node_name=?`, nodeName)
 	if err != nil {

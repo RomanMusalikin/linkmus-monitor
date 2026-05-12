@@ -165,6 +165,9 @@ type NodeSummary struct {
 	// Пользовательские сервисы
 	CustomServices []CustomServiceResult `json:"customServices"`
 
+	// Видимость сервисов (ключи: "ssh","rdp","smb","http","https","winrm","custom_N")
+	ServiceVisibility map[string]bool `json:"serviceVisibility"`
+
 	// SNMP (server-side poller)
 	SNMPCollected  bool            `json:"snmpCollected"`
 	SNMPSysUpTime  uint32          `json:"snmpSysUpTime"`
@@ -314,6 +317,7 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
 			return
 		}
+		InvalidateNodesCache(dbConn)
 		w.WriteHeader(http.StatusOK)
 		return
 	}
