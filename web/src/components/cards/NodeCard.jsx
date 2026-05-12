@@ -361,7 +361,9 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
           {isWindows && <ProbeDot label="SMB"   active={node.smbReachable}   ms={node.smbMs} />}
           <ProbeDot label="HTTP" active={node.httpReachable} ms={node.httpMs} />
           {isWindows && <ProbeDot label="WinRM" active={node.winrmReachable} ms={node.winrmMs} />}
-          <ProbeDot label="DNS"  active={node.dnsReachable}  ms={node.dnsMs} />
+          {(node.customServices || []).map(svc => (
+            <ProbeDot key={svc.id} label={svc.name} active={svc.reachable} ms={svc.ms} />
+          ))}
           {(node.cpuTemp || 0) > 0 && (
             <span className={`flex items-center gap-1 text-xs px-2 py-1 rounded-lg border font-medium ml-auto
               ${node.cpuTemp > 80

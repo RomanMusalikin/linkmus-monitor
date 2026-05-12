@@ -1,7 +1,6 @@
 package server
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"net"
@@ -10,25 +9,26 @@ import (
 	"time"
 )
 
-// ProbeResult — результаты TCP/DNS-проб для одного узла
+// ProbeResult — результаты TCP-проб для одного узла
 type ProbeResult struct {
 	SSHReachable   bool
 	RDPReachable   bool
 	SMBReachable   bool
 	HTTPReachable  bool
 	WinRMReachable bool
-	DNSReachable   bool
 	SSHMs          float64
 	RDPMs          float64
 	SMBMs          float64
 	HTTPMs         float64
 	WinRMMs        float64
-	DNSMs          float64
 }
 
 var (
 	probeCache   = map[string]ProbeResult{}
 	probeCacheMu sync.RWMutex
+
+	customProbeCache   = map[string][]CustomServiceResult{}
+	customProbeCacheMu sync.RWMutex
 )
 
 // StartProber запускает фоновый цикл TCP-проб каждые 15 секунд.
@@ -41,11 +41,22 @@ func StartProber(db *sql.DB) {
 	}()
 }
 
-// GetProbe возвращает последние результаты проб для IP-адреса.
+// GetProbe возвращает последние результаты стандартных проб для IP-адреса.
 func GetProbe(ip string) ProbeResult {
 	probeCacheMu.RLock()
 	defer probeCacheMu.RUnlock()
 	return probeCache[ip]
+}
+
+// GetCustomProbe возвращает последние результаты проб пользовательских сервисов для IP-адреса.
+func GetCustomProbe(ip string) []CustomServiceResult {
+	customProbeCacheMu.RLock()
+	defer customProbeCacheMu.RUnlock()
+	r := customProbeCache[ip]
+	if r == nil {
+		return []CustomServiceResult{}
+	}
+	return r
 }
 
 func probeTCP(host, port string) (bool, float64) {
@@ -71,31 +82,12 @@ func probeHTTP(ip string, port int) (bool, float64) {
 	return resp.StatusCode < 500, ms
 }
 
-func probeDNS(ip string, port int) (bool, float64) {
-	portStr := fmt.Sprintf("%d", port)
-	resolver := &net.Resolver{
-		PreferGo: true,
-		Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
-			return (&net.Dialer{Timeout: 2 * time.Second}).DialContext(ctx, "udp", net.JoinHostPort(ip, portStr))
-		},
-	}
-	start := time.Now()
-	_, err := resolver.LookupHost(context.Background(), "srv-mon-01.local")
-	ms := float64(time.Since(start).Nanoseconds()) / 1e6
-	if err != nil {
-		ok, ms2 := probeTCP(ip, portStr)
-		return ok, ms2
-	}
-	return true, ms
-}
-
 type nodeTarget struct {
 	ip   string
 	name string
 }
 
 func runProbes(db *sql.DB) {
-	// Берём последний известный node_name для каждого уникального IP
 	rows, err := db.Query(`
 		SELECT m.ip, m.node_name FROM metrics m
 		INNER JOIN (
@@ -116,6 +108,7 @@ func runProbes(db *sql.DB) {
 	rows.Close()
 
 	globalPorts := GetPortSettings(db)
+	customs := GetCustomServices(db)
 
 	var wg sync.WaitGroup
 	for _, t := range targets {
@@ -131,11 +124,23 @@ func runProbes(db *sql.DB) {
 			result.SMBReachable, result.SMBMs = probeTCP(t.ip, fmt.Sprintf("%d", ports.SMBPort))
 			result.HTTPReachable, result.HTTPMs = probeHTTP(t.ip, ports.HTTPPort)
 			result.WinRMReachable, result.WinRMMs = probeTCP(t.ip, fmt.Sprintf("%d", ports.WinRMPort))
-			result.DNSReachable, result.DNSMs = probeDNS(t.ip, ports.DNSPort)
 
 			probeCacheMu.Lock()
 			probeCache[t.ip] = result
 			probeCacheMu.Unlock()
+
+			// Пробы пользовательских сервисов
+			var customResults []CustomServiceResult
+			for _, svc := range customs {
+				ok, ms := probeTCP(t.ip, fmt.Sprintf("%d", svc.Port))
+				customResults = append(customResults, CustomServiceResult{
+					ID: svc.ID, Name: svc.Name, Port: svc.Port,
+					Reachable: ok, Ms: ms,
+				})
+			}
+			customProbeCacheMu.Lock()
+			customProbeCache[t.ip] = customResults
+			customProbeCacheMu.Unlock()
 		}(t)
 	}
 	wg.Wait()

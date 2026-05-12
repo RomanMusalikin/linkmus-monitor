@@ -159,6 +159,48 @@ export async function saveNodePortOverride(name, ports) {
   if (!res.ok) throw new Error('Ошибка сохранения настроек портов узла');
 }
 
+export async function getCustomServices() {
+  const res = await fetch(`${API_BASE}/settings/services`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Ошибка получения списка сервисов');
+  return res.json();
+}
+
+export async function createCustomService(name, port) {
+  const res = await fetch(`${API_BASE}/settings/services`, {
+    method: 'POST',
+    headers: authHeaders(),
+    body: JSON.stringify({ name, port }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || 'Ошибка создания сервиса');
+  }
+  return res.json();
+}
+
+export async function deleteCustomService(id) {
+  const res = await fetch(`${API_BASE}/settings/services/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Ошибка удаления сервиса');
+}
+
+export async function getNodeServiceVisibility(name) {
+  const res = await fetch(`${API_BASE}/nodes/${encodeURIComponent(name)}/visibility`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Ошибка получения настроек видимости');
+  return res.json();
+}
+
+export async function saveNodeServiceVisibility(name, visibility) {
+  const res = await fetch(`${API_BASE}/nodes/${encodeURIComponent(name)}/visibility`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(visibility),
+  });
+  if (!res.ok) throw new Error('Ошибка сохранения настроек видимости');
+}
+
 export async function sendTestTelegram() {
   const res = await fetch(`${API_BASE}/settings/alerts/test-telegram`, {
     method: 'POST',

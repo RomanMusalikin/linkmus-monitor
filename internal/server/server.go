@@ -136,6 +136,10 @@ func Run() {
 	// Настройки портов сервисов
 	http.HandleFunc("/api/settings/ports", requireAuth(handlePortSettings))
 
+	// Пользовательские сервисы
+	http.HandleFunc("/api/settings/services", requireAuth(handleCustomServices))
+	http.HandleFunc("/api/settings/services/", requireAuth(handleCustomServices))
+
 	// Настройки GigaChat
 	http.HandleFunc("/api/settings/gigachat", requireAuth(handleGigachatSettings))
 
@@ -427,6 +431,53 @@ func handleGigachatSettings(w http.ResponseWriter, r *http.Request) {
 		gcToken = ""
 		gcTokenMu.Unlock()
 		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
+
+// handleCustomServices — GET/POST /api/settings/services  |  DELETE /api/settings/services/{id}
+func handleCustomServices(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	corsHeaders(w)
+
+	switch r.Method {
+	case http.MethodOptions:
+		w.WriteHeader(http.StatusNoContent)
+	case http.MethodGet:
+		svcs := GetCustomServices(dbConn)
+		if svcs == nil {
+			svcs = []CustomService{}
+		}
+		json.NewEncoder(w).Encode(svcs)
+	case http.MethodPost:
+		var body struct {
+			Name string `json:"name"`
+			Port int    `json:"port"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Name == "" || body.Port <= 0 {
+			http.Error(w, `{"error":"name and port required"}`, http.StatusBadRequest)
+			return
+		}
+		svc, err := CreateCustomService(dbConn, strings.TrimSpace(body.Name), body.Port)
+		if err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(svc)
+	case http.MethodDelete:
+		// /api/settings/services/{id}
+		idStr := strings.TrimPrefix(r.URL.Path, "/api/settings/services/")
+		var id int
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil || id <= 0 {
+			http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
+			return
+		}
+		if err := DeleteCustomService(dbConn, id); err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
 	default:
 		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
 	}

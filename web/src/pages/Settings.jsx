@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield, Bot } from 'lucide-react';
-import { getAlertSettings, saveAlertSettings, sendTestEmail, sendTestTelegram, getPortSettings, savePortSettings, getGigachatSettings, saveGigachatSettings } from '../lib/api';
+import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield, Bot, Plus, Trash2 } from 'lucide-react';
+import { getAlertSettings, saveAlertSettings, sendTestEmail, sendTestTelegram, getPortSettings, savePortSettings, getGigachatSettings, saveGigachatSettings, getCustomServices, createCustomService, deleteCustomService } from '../lib/api';
 
 function Field({ label, hint, children }) {
   return (
@@ -65,7 +65,7 @@ const defaultSettings = {
 };
 
 const defaultPortSettings = {
-  sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, winrmPort: 5985, dnsPort: 53,
+  sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, winrmPort: 5985,
 };
 
 export default function Settings() {
@@ -87,6 +87,12 @@ export default function Settings() {
   const [gcSaving, setGcSaving] = useState(false);
   const [gcSaveMsg, setGcSaveMsg] = useState('');
 
+  const [customServices, setCustomServices] = useState([]);
+  const [newSvcName, setNewSvcName] = useState('');
+  const [newSvcPort, setNewSvcPort] = useState('');
+  const [svcAdding, setSvcAdding] = useState(false);
+  const [svcMsg, setSvcMsg] = useState('');
+
   useEffect(() => {
     getAlertSettings()
       .then(data => setS({ ...defaultSettings, ...data }))
@@ -98,7 +104,38 @@ export default function Settings() {
     getGigachatSettings()
       .then(data => setGigachat(prev => ({ ...prev, ...data })))
       .catch(() => {});
+    getCustomServices()
+      .then(setCustomServices)
+      .catch(() => {});
   }, []);
+
+  async function handleAddService(e) {
+    e.preventDefault();
+    const port = parseInt(newSvcPort, 10);
+    if (!newSvcName.trim() || !port || port < 1 || port > 65535) return;
+    setSvcAdding(true); setSvcMsg('');
+    try {
+      const svc = await createCustomService(newSvcName.trim(), port);
+      setCustomServices(prev => [...prev, svc]);
+      setNewSvcName('');
+      setNewSvcPort('');
+    } catch (err) {
+      setSvcMsg('Ошибка: ' + err.message);
+    } finally {
+      setSvcAdding(false);
+      setTimeout(() => setSvcMsg(''), 3000);
+    }
+  }
+
+  async function handleDeleteService(id) {
+    try {
+      await deleteCustomService(id);
+      setCustomServices(prev => prev.filter(s => s.id !== id));
+    } catch (err) {
+      setSvcMsg('Ошибка удаления: ' + err.message);
+      setTimeout(() => setSvcMsg(''), 3000);
+    }
+  }
 
   const upd = field => e =>
     setS(prev => ({ ...prev, [field]: e.target.type === 'checkbox' ? e.target.checked : e.target.value }));
@@ -237,10 +274,6 @@ export default function Settings() {
                 <Input type="text" inputMode="numeric" value={ports.winrmPort}
                   onChange={updPort('winrmPort')} placeholder="5985" />
               </Field>
-              <Field label="DNS" hint="По умолчанию: 53">
-                <Input type="text" inputMode="numeric" value={ports.dnsPort}
-                  onChange={updPort('dnsPort')} placeholder="53" />
-              </Field>
             </div>
           </Section>
 
@@ -255,6 +288,65 @@ export default function Settings() {
               <span className={`text-sm ${portsSaveMsg.startsWith('✓') ? 'text-emerald-400' : 'text-red-400'}`}>{portsSaveMsg}</span>
             )}
           </div>
+
+          {/* Пользовательские сервисы */}
+          <Section title="Пользовательские сервисы" icon={Plus} iconColor="text-violet-400">
+            <p className="text-xs text-slate-500 mb-4">
+              Добавьте свои сервисы для TCP-мониторинга. Каждый узел можно настроить отдельно — выбрать, какие сервисы отображать.
+            </p>
+
+            {customServices.length > 0 && (
+              <div className="space-y-2 mb-4">
+                {customServices.map(svc => (
+                  <div key={svc.id} className="flex items-center justify-between px-3 py-2.5 rounded-xl bg-slate-900/50 border border-slate-700/40">
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-medium text-slate-200">{svc.name}</span>
+                      <span className="text-xs px-2 py-0.5 rounded bg-slate-700/60 text-slate-400 font-mono">:{svc.port}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteService(svc.id)}
+                      className="p-1.5 rounded-lg text-slate-600 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                      title="Удалить сервис"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <form onSubmit={handleAddService} className="flex gap-2">
+              <div className="flex-1">
+                <Input
+                  type="text"
+                  value={newSvcName}
+                  onChange={e => setNewSvcName(e.target.value)}
+                  placeholder="Название (например, PostgreSQL)"
+                  maxLength={40}
+                />
+              </div>
+              <div className="w-24">
+                <Input
+                  type="text"
+                  inputMode="numeric"
+                  value={newSvcPort}
+                  onChange={e => setNewSvcPort(e.target.value.replace(/[^0-9]/g, ''))}
+                  placeholder="Порт"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={svcAdding || !newSvcName.trim() || !newSvcPort}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-violet-500/20 text-violet-300 border border-violet-500/30
+                  hover:bg-violet-500/30 transition-all text-sm font-medium disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+              >
+                <Plus className="w-4 h-4" />
+                Добавить
+              </button>
+            </form>
+            {svcMsg && <p className="text-xs mt-2 text-red-400">{svcMsg}</p>}
+          </Section>
         </form>
       )}
 

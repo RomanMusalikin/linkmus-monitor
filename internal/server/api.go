@@ -154,13 +154,14 @@ type NodeSummary struct {
 	SMBReachable   bool    `json:"smbReachable"`
 	HTTPReachable  bool    `json:"httpReachable"`
 	WinRMReachable bool    `json:"winrmReachable"`
-	DNSReachable   bool    `json:"dnsReachable"`
 	SSHMs          float64 `json:"sshMs"`
 	RDPMs          float64 `json:"rdpMs"`
 	SMBMs          float64 `json:"smbMs"`
 	HTTPMs         float64 `json:"httpMs"`
 	WinRMMs        float64 `json:"winrmMs"`
-	DNSMs          float64 `json:"dnsMs"`
+
+	// Пользовательские сервисы
+	CustomServices []CustomServiceResult `json:"customServices"`
 
 	// SNMP (server-side poller)
 	SNMPCollected  bool            `json:"snmpCollected"`
@@ -280,6 +281,41 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GET /api/nodes/{name}/visibility — видимость сервисов для узла
+	if strings.HasSuffix(rest, "/visibility") && r.Method == http.MethodGet {
+		name := strings.TrimSuffix(rest, "/visibility")
+		if name == "" {
+			http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
+			return
+		}
+		vis := GetNodeServiceVisibility(dbConn, name)
+		if vis == nil {
+			vis = NodeServiceVisibility{}
+		}
+		json.NewEncoder(w).Encode(vis)
+		return
+	}
+
+	// PUT /api/nodes/{name}/visibility — сохранить видимость сервисов
+	if strings.HasSuffix(rest, "/visibility") && r.Method == http.MethodPut {
+		name := strings.TrimSuffix(rest, "/visibility")
+		if name == "" {
+			http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
+			return
+		}
+		var vis NodeServiceVisibility
+		if err := json.NewDecoder(r.Body).Decode(&vis); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+			return
+		}
+		if err := SaveNodeServiceVisibility(dbConn, name, vis); err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	// PUT /api/nodes/{name}/ports — сохранить переопределения портов
 	if strings.HasSuffix(rest, "/ports") && r.Method == http.MethodPut {
 		name := strings.TrimSuffix(rest, "/ports")
@@ -338,8 +374,10 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	dbConn.Exec(`DELETE FROM metrics_hourly WHERE node_name = ?`, name)
+	dbConn.Exec(`DELETE FROM metrics_30min WHERE node_name = ?`, name)
 	dbConn.Exec(`DELETE FROM node_aliases WHERE node_name = ?`, name)
 	dbConn.Exec(`DELETE FROM node_port_overrides WHERE node_name = ?`, name)
+	dbConn.Exec(`DELETE FROM node_service_visibility WHERE node_name = ?`, name)
 	removeFromNodesCache(name)
 	w.WriteHeader(http.StatusOK)
 }

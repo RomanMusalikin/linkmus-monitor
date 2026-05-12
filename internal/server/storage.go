@@ -222,8 +222,24 @@ func MigrateDB(db *sql.DB) {
 		rdp_port   INTEGER,
 		smb_port   INTEGER,
 		http_port  INTEGER,
-		winrm_port INTEGER,
-		dns_port   INTEGER
+		winrm_port INTEGER
+	)`)
+
+	// Пользовательские сервисы для TCP-проб
+	db.Exec(`
+	CREATE TABLE IF NOT EXISTS custom_services (
+		id    INTEGER PRIMARY KEY AUTOINCREMENT,
+		name  TEXT    NOT NULL,
+		port  INTEGER NOT NULL
+	)`)
+
+	// Видимость сервисов для каждого узла
+	db.Exec(`
+	CREATE TABLE IF NOT EXISTS node_service_visibility (
+		node_name   TEXT    NOT NULL,
+		service_key TEXT    NOT NULL,
+		visible     INTEGER NOT NULL DEFAULT 1,
+		PRIMARY KEY (node_name, service_key)
 	)`)
 
 	// Индексы: критически важны для производительности при большом числе узлов
@@ -484,13 +500,12 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			SMBReachable:   probe.SMBReachable,
 			HTTPReachable:  probe.HTTPReachable,
 			WinRMReachable: probe.WinRMReachable,
-			DNSReachable:   probe.DNSReachable,
 			SSHMs:          probe.SSHMs,
 			RDPMs:          probe.RDPMs,
 			SMBMs:          probe.SMBMs,
 			HTTPMs:         probe.HTTPMs,
 			WinRMMs:        probe.WinRMMs,
-			DNSMs:          probe.DNSMs,
+			CustomServices: GetCustomProbe(r.ip),
 			SNMPCollected:  snmp.Collected,
 			SNMPSysUpTime:  snmp.SysUpTimeSec,
 			SNMPSysName:    snmp.SysName,

@@ -5,7 +5,7 @@ import {
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
   Wifi, MemoryStick, Trash2, Download, Pencil, Check, X
 } from 'lucide-react';
-import { deleteNode, fetchNodes, fetchNodeHistory, renameNode, getPortSettings, getNodePortOverride, saveNodePortOverride } from '../lib/api';
+import { deleteNode, fetchNodes, fetchNodeHistory, renameNode, getPortSettings, getNodePortOverride, saveNodePortOverride, getNodeServiceVisibility, saveNodeServiceVisibility } from '../lib/api';
 import { useNodesContext } from '../context/NodesContext';
 import { useVersion } from '../hooks/useVersion';
 import CpuGauge from '../components/charts/CpuGauge';
@@ -236,11 +236,16 @@ export default function NodeDetail() {
   const exportCloseTimer = useRef(null);
   const [liveBuffer, setLiveBuffer] = useState([]);
   const liveBufferSeeded = useRef(false);
-  const [portSettings, setPortSettings] = useState({ sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, winrmPort: 5985, dnsPort: 53 });
+  const [portSettings, setPortSettings] = useState({ sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, winrmPort: 5985 });
   const [portOverride, setPortOverride] = useState({});
   const [editingPorts, setEditingPorts] = useState(false);
   const [portDraft, setPortDraft] = useState({});
   const [savingPorts, setSavingPorts] = useState(false);
+
+  const [serviceVisibility, setServiceVisibility] = useState({});
+  const [editingVisibility, setEditingVisibility] = useState(false);
+  const [visibilityDraft, setVisibilityDraft] = useState({});
+  const [savingVisibility, setSavingVisibility] = useState(false);
 
   useEffect(() => {
     getPortSettings().then(setPortSettings).catch(() => {});
@@ -249,6 +254,7 @@ export default function NodeDetail() {
   useEffect(() => {
     if (!nodeId) return;
     getNodePortOverride(nodeId).then(setPortOverride).catch(() => {});
+    getNodeServiceVisibility(nodeId).then(setServiceVisibility).catch(() => {});
   }, [nodeId]);
 
   // Сбрасываем весь локальный стейт при смене узла
@@ -355,7 +361,7 @@ export default function NodeDetail() {
         ['RDP', n.rdpReachable ? 'да' : 'нет'],
         ['SMB', n.smbReachable ? 'да' : 'нет'],
         ['HTTP', n.httpReachable ? 'да' : 'нет'],
-        ['DNS', n.dnsReachable ? 'да' : 'нет'],
+        ...(n.customServices || []).map(s => [s.name, s.reachable ? 'да' : 'нет']),
       ];
       const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
       const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' });
@@ -1137,21 +1143,93 @@ export default function NodeDetail() {
 
         {/* ── Сервисы ── */}
         <Card title="Сервисы" icon={Shield} iconColor="text-emerald-400">
+          {/* Список сервисов с учётом видимости */}
           <div className="space-y-2">
-            <ServiceBadge label="SSH" port={portOverride.sshPort ?? portSettings.sshPort} active={node.sshReachable} ms={node.sshMs} />
-            {isWindows && (
-              <>
-                <ServiceBadge label="Remote Desktop (RDP)" port={portOverride.rdpPort ?? portSettings.rdpPort} active={node.rdpReachable} ms={node.rdpMs} />
-                <ServiceBadge label="File Sharing (SMB)" port={portOverride.smbPort ?? portSettings.smbPort} active={node.smbReachable} ms={node.smbMs} />
-                <ServiceBadge label="WinRM" port={portOverride.winrmPort ?? portSettings.winrmPort} active={node.winrmReachable} ms={node.winrmMs} />
-              </>
+            {serviceVisibility.ssh !== false && (
+              <ServiceBadge label="SSH" port={portOverride.sshPort ?? portSettings.sshPort} active={node.sshReachable} ms={node.sshMs} />
             )}
-            <ServiceBadge label="HTTP" port={portOverride.httpPort ?? portSettings.httpPort} active={node.httpReachable} ms={node.httpMs} />
-            <ServiceBadge label="DNS" port={portOverride.dnsPort ?? portSettings.dnsPort} active={node.dnsReachable} ms={node.dnsMs} />
+            {isWindows && serviceVisibility.rdp !== false && (
+              <ServiceBadge label="Remote Desktop (RDP)" port={portOverride.rdpPort ?? portSettings.rdpPort} active={node.rdpReachable} ms={node.rdpMs} />
+            )}
+            {isWindows && serviceVisibility.smb !== false && (
+              <ServiceBadge label="File Sharing (SMB)" port={portOverride.smbPort ?? portSettings.smbPort} active={node.smbReachable} ms={node.smbMs} />
+            )}
+            {isWindows && serviceVisibility.winrm !== false && (
+              <ServiceBadge label="WinRM" port={portOverride.winrmPort ?? portSettings.winrmPort} active={node.winrmReachable} ms={node.winrmMs} />
+            )}
+            {serviceVisibility.http !== false && (
+              <ServiceBadge label="HTTP" port={portOverride.httpPort ?? portSettings.httpPort} active={node.httpReachable} ms={node.httpMs} />
+            )}
+            {(node.customServices || []).map(svc =>
+              serviceVisibility[`custom_${svc.id}`] !== false && (
+                <ServiceBadge key={svc.id} label={svc.name} port={svc.port} active={svc.reachable} ms={svc.ms} />
+              )
+            )}
+          </div>
+
+          {/* Настройка видимости сервисов */}
+          <div className="mt-4 pt-4 border-t border-slate-700/40">
+            {!editingVisibility ? (
+              <button
+                onClick={() => { setVisibilityDraft({ ...serviceVisibility }); setEditingVisibility(true); }}
+                className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
+              >
+                <Pencil size={12} /> Настроить отображение сервисов
+              </button>
+            ) : (
+              <div className="space-y-3">
+                <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">
+                  Показывать сервисы для этого узла
+                </div>
+                {[
+                  { key: 'ssh',   label: 'SSH' },
+                  ...(isWindows ? [
+                    { key: 'rdp',   label: 'Remote Desktop (RDP)' },
+                    { key: 'smb',   label: 'File Sharing (SMB)' },
+                    { key: 'winrm', label: 'WinRM' },
+                  ] : []),
+                  { key: 'http',  label: 'HTTP' },
+                  ...(node.customServices || []).map(svc => ({ key: `custom_${svc.id}`, label: svc.name })),
+                ].map(({ key, label }) => (
+                  <label key={key} className="flex items-center gap-2.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={visibilityDraft[key] !== false}
+                      onChange={e => setVisibilityDraft(d => ({ ...d, [key]: e.target.checked }))}
+                      className="w-4 h-4 rounded accent-emerald-500"
+                    />
+                    <span className="text-xs text-slate-300">{label}</span>
+                  </label>
+                ))}
+                <div className="flex gap-2 pt-1">
+                  <button
+                    disabled={savingVisibility}
+                    onClick={async () => {
+                      setSavingVisibility(true);
+                      try {
+                        await saveNodeServiceVisibility(nodeId, visibilityDraft);
+                        setServiceVisibility(visibilityDraft);
+                        setEditingVisibility(false);
+                      } catch { /* ignore */ }
+                      setSavingVisibility(false);
+                    }}
+                    className="flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs rounded transition-colors disabled:opacity-50"
+                  >
+                    <Check size={12} /> {savingVisibility ? 'Сохраняю...' : 'Сохранить'}
+                  </button>
+                  <button
+                    onClick={() => setEditingVisibility(false)}
+                    className="flex items-center gap-1 px-3 py-1 bg-slate-700 hover:bg-slate-600 text-slate-300 text-xs rounded transition-colors"
+                  >
+                    <X size={12} /> Отмена
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Настройка портов для этого узла */}
-          <div className="mt-4 pt-4 border-t border-slate-700/40">
+          <div className="mt-3 pt-3 border-t border-slate-700/40">
             {!editingPorts ? (
               <button
                 onClick={() => { setPortDraft({ ...portOverride }); setEditingPorts(true); }}
@@ -1165,12 +1243,11 @@ export default function NodeDetail() {
                   Порты узла <span className="text-slate-600 normal-case">(пусто = глобальный дефолт)</span>
                 </div>
                 {[
-                  { key: 'sshPort',   label: 'SSH',     def: portSettings.sshPort },
-                  { key: 'httpPort',  label: 'HTTP',    def: portSettings.httpPort },
-                  { key: 'dnsPort',   label: 'DNS',     def: portSettings.dnsPort },
-                  { key: 'rdpPort',   label: 'RDP',     def: portSettings.rdpPort },
-                  { key: 'smbPort',   label: 'SMB',     def: portSettings.smbPort },
-                  { key: 'winrmPort', label: 'WinRM',   def: portSettings.winrmPort },
+                  { key: 'sshPort',   label: 'SSH',   def: portSettings.sshPort },
+                  { key: 'httpPort',  label: 'HTTP',  def: portSettings.httpPort },
+                  { key: 'rdpPort',   label: 'RDP',   def: portSettings.rdpPort },
+                  { key: 'smbPort',   label: 'SMB',   def: portSettings.smbPort },
+                  { key: 'winrmPort', label: 'WinRM', def: portSettings.winrmPort },
                 ].map(({ key, label, def }) => (
                   <div key={key} className="flex items-center gap-3">
                     <span className="text-xs text-slate-400 w-16 shrink-0">{label}</span>
