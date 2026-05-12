@@ -152,6 +152,10 @@ type nodeStats struct {
 	RamAbove75 int // точек с RAM > 75%
 	RamAbove90 int // точек с RAM > 90%
 
+	// CPU Steal
+	AvgSteal float64
+	MaxSteal float64
+
 	// Load Average
 	AvgLoad1 float64
 	MaxLoad1 float64
@@ -284,7 +288,8 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 					AVG(COALESCE(net_bytes_recv,0)), AVG(COALESCE(net_bytes_sent,0)),
 					COUNT(*),
 					AVG(cpu_usage * cpu_usage),
-					COALESCE(AVG(load_avg_1), 0), COALESCE(MAX(load_avg_1), 0), COALESCE(AVG(load_avg_5), 0)
+					COALESCE(AVG(load_avg_1), 0), COALESCE(MAX(load_avg_1), 0), COALESCE(AVG(load_avg_5), 0),
+					COALESCE(AVG(cpu_steal), 0), COALESCE(MAX(cpu_steal), 0)
 				FROM metrics
 				WHERE node_name = ? AND timestamp >= ? AND timestamp <= ?
 			`, name, since, until)
@@ -296,6 +301,7 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 				&s.Samples,
 				&avgSq,
 				&s.AvgLoad1, &s.MaxLoad1, &s.AvgLoad5,
+				&s.AvgSteal, &s.MaxSteal,
 			)
 			s.StddevCPU = math.Sqrt(math.Max(0, avgSq-s.AvgCPU*s.AvgCPU))
 		}
@@ -313,13 +319,15 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 				SUM(CASE WHEN ram_total > 0 AND ram_usage / ram_total > 0.90 THEN 1 ELSE 0 END),
 				AVG(CASE WHEN CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) BETWEEN 0  AND 7  THEN cpu_usage END),
 				AVG(CASE WHEN CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) BETWEEN 8  AND 19 THEN cpu_usage END),
-				AVG(CASE WHEN CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) BETWEEN 20 AND 23 THEN cpu_usage END)
+				AVG(CASE WHEN CAST(strftime('%H', timestamp, 'localtime') AS INTEGER) BETWEEN 20 AND 23 THEN cpu_usage END),
+				COALESCE(AVG(cpu_steal), 0), COALESCE(MAX(cpu_steal), 0)
 			FROM metrics
 			WHERE node_name = ? AND timestamp >= ? AND timestamp <= ?
 		`, name, since, until).Scan(
 			&s.CpuAbove60, &s.CpuAbove80,
 			&s.RamAbove75, &s.RamAbove90,
 			&s.SlotNight, &s.SlotDay, &s.SlotEvening,
+			&s.AvgSteal, &s.MaxSteal,
 		)
 
 		result = append(result, s)
@@ -443,6 +451,12 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 			sb.WriteString(fmt.Sprintf("  Load Average: 1м %.2f, 5м %.2f, пиковый 1м %.2f\n",
 				s.AvgLoad1, s.AvgLoad5, s.MaxLoad1))
 		}
+		if s.AvgSteal > 0.05 {
+			sb.WriteString(fmt.Sprintf("  CPU Steal: среднее %.2f%%, пиковый %.2f%% (виртуальная среда, кража ресурсов гипервизором)\n",
+				s.AvgSteal, s.MaxSteal))
+		} else {
+			sb.WriteString("  CPU Steal: не наблюдался (steal = 0)\n")
+		}
 
 		ramPct := 0.0
 		maxRamPct := 0.0
@@ -478,6 +492,12 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 	sb.WriteString("  - до 80% — норма\n")
 	sb.WriteString("  - 80–90% — следует упомянуть\n")
 	sb.WriteString("  - выше 90% — критично\n\n")
+	sb.WriteString("CPU Steal (кража ресурсов гипервизором, актуально для виртуальных машин):\n")
+	sb.WriteString("  - 0% — отлично, ресурсы не воруются\n")
+	sb.WriteString("  - до 5% — допустимо\n")
+	sb.WriteString("  - 5–10% — заметная конкуренция на хосте, стоит упомянуть\n")
+	sb.WriteString("  - выше 10% — серьёзная проблема гипервизора, требует внимания\n")
+	sb.WriteString("  - если steal = 0 — физический сервер или изолированная VM без конкуренции\n\n")
 	sb.WriteString("=== ЗАДАНИЕ ===\n\n")
 	sb.WriteString("Составь структурированный отчёт со следующими разделами:\n")
 	sb.WriteString("1. Общая сводка — краткое резюме состояния инфраструктуры\n")
