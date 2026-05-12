@@ -201,7 +201,7 @@ func HandleReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go saveReportHistory(dbConn, req.Period, req.From, req.To, req.Nodes, report)
+	saveReportHistory(dbConn, req.Period, req.From, req.To, req.Nodes, report)
 	json.NewEncoder(w).Encode(map[string]string{"report": report})
 }
 
