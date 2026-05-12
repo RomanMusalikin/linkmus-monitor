@@ -265,13 +265,16 @@ func rotateLog(path string) {
 
 // getOutboundIP определяет IP-адрес, с которого агент достигает сервера мониторинга.
 func getOutboundIP(serverURL string) string {
-	// Извлекаем host:port из URL сервера для UDP-dial
+	// Извлекаем host из URL сервера для UDP-dial.
+	// Если сервер на localhost — используем 8.8.8.8, чтобы получить реальный внешний IP.
 	target := "8.8.8.8:80"
 	if serverURL != "" {
 		u, err := url.Parse(serverURL)
 		if err == nil && u.Host != "" {
 			host := u.Hostname()
-			target = host + ":80"
+			if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+				target = host + ":80"
+			}
 		}
 	}
 	conn, err := net.Dial("udp", target)
