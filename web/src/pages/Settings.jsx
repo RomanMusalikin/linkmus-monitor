@@ -262,12 +262,13 @@ export default function Settings() {
         <form onSubmit={handleGcSave} className="space-y-5">
           <Section title="GigaChat API" icon={Bot} iconColor="text-violet-400">
             <p className="text-xs text-slate-500 mb-4">
-              Учётные данные для интеграции с GigaChat. Получить Client ID и Client Secret можно в{' '}
-              <span className="text-slate-400">личном кабинете Sber Developers</span>.
+              Учётные данные для интеграции с GigaChat. Получить ключ можно в{' '}
+              <span className="text-slate-400">личном кабинете Sber Developers</span>{' '}
+              → Настройка API → Authorization key.
               Используется для генерации AI-отчётов по узлам.
             </p>
             <div className="space-y-4">
-              <Field label="Client ID (авторизационные данные)" hint="Authorization Data из личного кабинета">
+              <Field label="Client ID" hint="Client ID из личного кабинета (необязательно)">
                 <Input
                   type="text"
                   value={gigachat.clientId}
@@ -276,7 +277,7 @@ export default function Settings() {
                   autoComplete="off"
                 />
               </Field>
-              <Field label="Client Secret" hint="Секретный ключ приложения">
+              <Field label="Authorization Key" hint="Ключ авторизации из личного кабинета Sber Developers → Настройка API">
                 <Input
                   type="password"
                   value={gigachat.clientSecret}

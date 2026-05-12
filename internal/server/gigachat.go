@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"database/sql"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -67,7 +66,6 @@ func GigachatGetToken(s GigachatSettings) (string, error) {
 		return gcToken, nil
 	}
 
-	creds := base64.StdEncoding.EncodeToString([]byte(s.ClientID + ":" + s.ClientSecret))
 	form := url.Values{"scope": {s.Scope}}
 
 	req, err := http.NewRequest("POST",
@@ -77,7 +75,9 @@ func GigachatGetToken(s GigachatSettings) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	req.Header.Set("Authorization", "Basic "+creds)
+	// ClientSecret здесь — это Authorization Key из личного кабинета Sber,
+	// уже готовый base64-токен, вставляется напрямую
+	req.Header.Set("Authorization", "Basic "+s.ClientSecret)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("RqUID", uuid.NewString())

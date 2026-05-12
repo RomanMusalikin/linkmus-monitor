@@ -314,7 +314,7 @@ export default function Reports() {
               </div>
               {error.includes('не настроен') && (
                 <p className="text-xs text-slate-500">
-                  Перейдите в <span className="text-violet-400">Настройки → GigaChat AI</span> и укажите Client ID и Client Secret.
+                  Перейдите в <span className="text-violet-400">Настройки → GigaChat AI</span> и укажите Authorization Key из личного кабинета Sber Developers.
                 </p>
               )}
             </div>
