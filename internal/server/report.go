@@ -223,6 +223,7 @@ func HandleReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	report = cleanMarkdown(report)
 	saveReportHistory(dbConn, req.Period, req.From, req.To, req.Nodes, report)
 	json.NewEncoder(w).Encode(map[string]string{"report": report})
 }
@@ -513,6 +514,24 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 	sb.WriteString("- Пиши на русском языке")
 
 	return sb.String()
+}
+
+// cleanMarkdown убирает markdown-разметку из ответа GigaChat.
+func cleanMarkdown(s string) string {
+	lines := strings.Split(s, "\n")
+	for i, line := range lines {
+		// убираем заголовки: ### Текст → Текст
+		trimmed := strings.TrimLeft(line, "#")
+		if len(trimmed) < len(line) {
+			lines[i] = strings.TrimLeft(trimmed, " ")
+			continue
+		}
+		// убираем жирный/курсив: **текст** → текст, *текст* → текст
+		line = strings.ReplaceAll(line, "**", "")
+		line = strings.ReplaceAll(line, "__", "")
+		lines[i] = line
+	}
+	return strings.Join(lines, "\n")
 }
 
 // jsonEscape экранирует строку для безопасной вставки в JSON-литерал.
