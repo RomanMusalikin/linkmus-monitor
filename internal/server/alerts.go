@@ -83,8 +83,11 @@ func SendTestTelegram(s AlertSettings) error {
 // ── Трекер кулдаунов (в памяти) ─────────────────────────────────────────────
 
 var (
-	cooldownMu   sync.Mutex
+	cooldownMu    sync.Mutex
 	lastAlertSent = map[string]time.Time{} // "nodeName:cpu" / "nodeName:ram"
+
+	nodeOnlineStateMu sync.Mutex
+	nodeOnlineState   = map[string]bool{} // node name → последнее известное состояние
 )
 
 func canAlert(key string, cooldownMin int) bool {
@@ -120,6 +123,71 @@ func checkAlerts(db *sql.DB) {
 	cachedNodes, _ := getCachedNodes()
 	nodes := make([]NodeSummary, len(cachedNodes))
 	copy(nodes, cachedNodes)
+
+	// ── Алерты на смену online/offline ──────────────────────────────────────
+	type stateChange struct {
+		displayName string
+		wentOffline bool
+	}
+	var changes []stateChange
+
+	nodeOnlineStateMu.Lock()
+	for _, n := range nodes {
+		dn := n.DisplayName
+		if dn == "" {
+			dn = n.Name
+		}
+		prev, known := nodeOnlineState[n.Name]
+		nodeOnlineState[n.Name] = n.Online
+		if known && prev != n.Online {
+			changes = append(changes, stateChange{dn, !n.Online})
+		}
+	}
+	nodeOnlineStateMu.Unlock()
+
+	if emailOK || tgOK {
+		for _, ch := range changes {
+			ts := time.Now().Format("02.01.2006 15:04:05")
+			if ch.wentOffline {
+				if emailOK {
+					subj := fmt.Sprintf("🔴 Узел недоступен: %s", ch.displayName)
+					body := fmt.Sprintf("Узел: %s\nСтатус: недоступен\nВремя: %s", ch.displayName, ts)
+					if err := sendMail(s, subj, body); err != nil {
+						log.Printf("⚠️  alert email offline %s: %v", ch.displayName, err)
+					} else {
+						log.Printf("📧 Алерт offline: %s", ch.displayName)
+					}
+				}
+				if tgOK {
+					msg := fmt.Sprintf("🔴 Узел *%s* недоступен\nВремя: %s", ch.displayName, ts)
+					if err := sendTelegram(s, msg); err != nil {
+						log.Printf("⚠️  alert tg offline %s: %v", ch.displayName, err)
+					} else {
+						log.Printf("📨 Алерт TG offline: %s", ch.displayName)
+					}
+				}
+			} else {
+				if emailOK {
+					subj := fmt.Sprintf("🟢 Узел снова доступен: %s", ch.displayName)
+					body := fmt.Sprintf("Узел: %s\nСтатус: доступен\nВремя: %s", ch.displayName, ts)
+					if err := sendMail(s, subj, body); err != nil {
+						log.Printf("⚠️  alert email online %s: %v", ch.displayName, err)
+					} else {
+						log.Printf("📧 Алерт online: %s", ch.displayName)
+					}
+				}
+				if tgOK {
+					msg := fmt.Sprintf("🟢 Узел *%s* снова доступен\nВремя: %s", ch.displayName, ts)
+					if err := sendTelegram(s, msg); err != nil {
+						log.Printf("⚠️  alert tg online %s: %v", ch.displayName, err)
+					} else {
+						log.Printf("📨 Алерт TG online: %s", ch.displayName)
+					}
+				}
+			}
+		}
+	}
+	// ────────────────────────────────────────────────────────────────────────
 
 	for _, n := range nodes {
 		if !n.Online {
