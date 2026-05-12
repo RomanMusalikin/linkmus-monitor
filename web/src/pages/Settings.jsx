@@ -65,7 +65,7 @@ const defaultSettings = {
 };
 
 const defaultPortSettings = {
-  sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, httpsPort: 0, winrmPort: 5985,
+  sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, httpsPort: 443, winrmPort: 5985,
 };
 
 export default function Settings() {
@@ -262,9 +262,9 @@ export default function Settings() {
                 <Input type="text" inputMode="numeric" value={ports.httpPort}
                   onChange={updPort('httpPort')} placeholder="80" />
               </Field>
-              <Field label="HTTPS" hint="0 = проверка отключена">
+              <Field label="HTTPS" hint="По умолчанию: 443">
                 <Input type="text" inputMode="numeric" value={ports.httpsPort}
-                  onChange={updPort('httpsPort')} placeholder="0" />
+                  onChange={updPort('httpsPort')} placeholder="443" />
               </Field>
               <Field label="Remote Desktop (RDP)" hint="По умолчанию: 3389">
                 <Input type="text" inputMode="numeric" value={ports.rdpPort}

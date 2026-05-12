@@ -15,8 +15,8 @@ type PortSettings struct {
 }
 
 func GetPortSettings(db *sql.DB) PortSettings {
-	s := PortSettings{SSHPort: 22, RDPPort: 3389, SMBPort: 445, HTTPPort: 80, HTTPSPort: 0, WinRMPort: 5985}
-	db.QueryRow(`SELECT ssh_port,rdp_port,smb_port,http_port,COALESCE(https_port,0),winrm_port FROM port_settings WHERE id=1`).
+	s := PortSettings{SSHPort: 22, RDPPort: 3389, SMBPort: 445, HTTPPort: 80, HTTPSPort: 443, WinRMPort: 5985}
+	db.QueryRow(`SELECT ssh_port,rdp_port,smb_port,http_port,COALESCE(https_port,443),winrm_port FROM port_settings WHERE id=1`).
 		Scan(&s.SSHPort, &s.RDPPort, &s.SMBPort, &s.HTTPPort, &s.HTTPSPort, &s.WinRMPort)
 	return s
 }

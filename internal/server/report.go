@@ -80,8 +80,8 @@ func HandleReportHistory(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	idStr := strings.TrimPrefix(r.URL.Path, "/api/reports/")
-	idStr = strings.TrimRight(idStr, "/")
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/reports")
+	idStr = strings.Trim(idStr, "/")
 
 	// GET /api/reports — список
 	if idStr == "" && r.Method == http.MethodGet {
@@ -403,7 +403,8 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 	sb.WriteString("2. Анализ узлов — подробный разбор каждого узла с оценкой показателей\n")
 	sb.WriteString("3. Выявленные проблемы — перечисли узлы и метрики, требующие внимания\n")
 	sb.WriteString("4. Рекомендации — конкретные действия по улучшению\n\n")
-	sb.WriteString("Используй профессиональный технический язык. Будь конкретен в цифрах и выводах.")
+	sb.WriteString("Используй профессиональный технический язык. Будь конкретен в цифрах и выводах.\n")
+	sb.WriteString("Не используй таблицы — только обычный текст с заголовками и списками.")
 
 	return sb.String()
 }

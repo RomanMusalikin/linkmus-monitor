@@ -236,7 +236,7 @@ export default function NodeDetail() {
   const exportCloseTimer = useRef(null);
   const [liveBuffer, setLiveBuffer] = useState([]);
   const liveBufferSeeded = useRef(false);
-  const [portSettings, setPortSettings] = useState({ sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, httpsPort: 0, winrmPort: 5985 });
+  const [portSettings, setPortSettings] = useState({ sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, httpsPort: 443, winrmPort: 5985 });
   const [showAllIfaces, setShowAllIfaces] = useState(false);
   const [portOverride, setPortOverride] = useState({});
   const [editingPorts, setEditingPorts] = useState(false);
@@ -1270,7 +1270,7 @@ export default function NodeDetail() {
                 {[
                   { key: 'sshPort',   label: 'SSH',   def: portSettings.sshPort },
                   { key: 'httpPort',  label: 'HTTP',  def: portSettings.httpPort },
-                  { key: 'httpsPort', label: 'HTTPS', def: portSettings.httpsPort || 443, hint: '0 = отключено' },
+                  { key: 'httpsPort', label: 'HTTPS', def: portSettings.httpsPort },
                   ...(isWindows ? [
                     { key: 'rdpPort',   label: 'RDP',   def: portSettings.rdpPort },
                     { key: 'smbPort',   label: 'SMB',   def: portSettings.smbPort },
