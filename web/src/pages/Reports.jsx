@@ -1,7 +1,7 @@
-import { useState, useContext } from 'react';
-import { FileText, Bot, Clock, RefreshCw, CheckSquare, Square, ChevronDown, ChevronUp, AlertCircle, CalendarRange } from 'lucide-react';
+import { useState, useContext, useEffect, useCallback } from 'react';
+import { FileText, Bot, Clock, RefreshCw, CheckSquare, Square, ChevronDown, ChevronUp, AlertCircle, CalendarRange, Download, Trash2, History } from 'lucide-react';
 import { NodesContext } from '../context/NodesContext';
-import { generateReport } from '../lib/api';
+import { generateReport, getReportHistory, getReportById, deleteReport } from '../lib/api';
 
 const PERIODS = [
   { value: '1h',  label: 'Последний час' },
@@ -31,6 +31,22 @@ function daysAgoStr(n) {
     + String(d.getMinutes()).padStart(2, '0');
 }
 
+function periodLabel(period, fromDate, toDate) {
+  if (period === 'custom' && fromDate && toDate) {
+    const f = fromDate.replace('T', ' ');
+    const t = toDate.replace('T', ' ');
+    return `${f} — ${t}`;
+  }
+  return PERIODS.find(p => p.value === period)?.label || period;
+}
+
+function formatDate(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  return d.toLocaleDateString('ru-RU', { day: '2-digit', month: '2-digit', year: '2-digit' })
+    + ' ' + d.toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+}
+
 function NodeCheckbox({ node, checked, onToggle }) {
   return (
     <button
@@ -58,7 +74,6 @@ function NodeCheckbox({ node, checked, onToggle }) {
   );
 }
 
-// Простой рендер markdown-подобного текста от GigaChat
 function ReportText({ text }) {
   const lines = text.split('\n');
   return (
@@ -80,7 +95,6 @@ function ReportText({ text }) {
           );
         }
         if (line.trim() === '') return <div key={i} className="h-2" />;
-        // Inline bold
         const parts = line.split(/\*\*(.+?)\*\*/g);
         return (
           <p key={i}>
@@ -96,6 +110,16 @@ function ReportText({ text }) {
   );
 }
 
+function exportTxt(report, label) {
+  const blob = new Blob([report], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `report-${label.replace(/[^a-zA-Z0-9а-яА-Я]/g, '-').slice(0, 40)}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function Reports() {
   const { data: nodes } = useContext(NodesContext);
   const [selected, setSelected] = useState([]);
@@ -104,11 +128,30 @@ export default function Reports() {
   const [dateTo, setDateTo] = useState(nowStr());
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
+  const [reportMeta, setReportMeta] = useState(null); // { period, fromDate, toDate, nodes }
   const [error, setError] = useState('');
   const [showAll, setShowAll] = useState(false);
 
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [activeHistoryId, setActiveHistoryId] = useState(null);
+
   const allNodes = nodes ?? [];
   const displayedNodes = showAll ? allNodes : allNodes.slice(0, 8);
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const data = await getReportHistory();
+      setHistory(data || []);
+    } catch { /* ignore */ }
+    finally { setHistoryLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    loadHistory();
+  }, [loadHistory]);
 
   function toggleNode(name) {
     setSelected(prev =>
@@ -130,11 +173,14 @@ export default function Reports() {
     setLoading(true);
     setError('');
     setReport('');
+    setActiveHistoryId(null);
     try {
       const from = period === 'custom' ? dateFrom : undefined;
       const to   = period === 'custom' ? dateTo   : undefined;
       const data = await generateReport(selected, period, from, to);
       setReport(data.report || '');
+      setReportMeta({ period, fromDate: from, toDate: to, nodes: selected });
+      loadHistory();
     } catch (err) {
       setError(err.message);
     } finally {
@@ -142,10 +188,39 @@ export default function Reports() {
     }
   }
 
+  async function handleLoadHistory(item) {
+    if (activeHistoryId === item.id) return;
+    setLoading(true);
+    setError('');
+    try {
+      const full = await getReportById(item.id);
+      setReport(full.report);
+      setReportMeta({ period: full.period, fromDate: full.fromDate, toDate: full.toDate, nodes: full.nodes });
+      setActiveHistoryId(item.id);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleDeleteHistory(e, id) {
+    e.stopPropagation();
+    try {
+      await deleteReport(id);
+      setHistory(prev => prev.filter(h => h.id !== id));
+      if (activeHistoryId === id) {
+        setReport('');
+        setReportMeta(null);
+        setActiveHistoryId(null);
+      }
+    } catch { /* ignore */ }
+  }
+
   const allSelected = allNodes.length > 0 && selected.length === allNodes.length;
 
   return (
-    <div className="p-4 sm:p-6 max-w-4xl mx-auto">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto">
       <div className="mb-6">
         <div className="flex items-center gap-3 mb-1">
           <Bot className="w-6 h-6 text-violet-400" />
@@ -229,11 +304,7 @@ export default function Reports() {
                   </span>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={toggleAll}
-                className="text-xs text-slate-400 hover:text-slate-200 transition-colors"
-              >
+              <button type="button" onClick={toggleAll} className="text-xs text-slate-400 hover:text-slate-200 transition-colors">
                 {allSelected ? 'Снять всё' : 'Выбрать всё'}
               </button>
             </div>
@@ -244,31 +315,22 @@ export default function Reports() {
               <>
                 <div className="space-y-2">
                   {displayedNodes.map(node => (
-                    <NodeCheckbox
-                      key={node.name}
-                      node={node}
-                      checked={selected.includes(node.name)}
-                      onToggle={toggleNode}
-                    />
+                    <NodeCheckbox key={node.name} node={node} checked={selected.includes(node.name)} onToggle={toggleNode} />
                   ))}
                 </div>
                 {allNodes.length > 8 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowAll(!showAll)}
-                    className="mt-3 flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors"
-                  >
+                  <button type="button" onClick={() => setShowAll(!showAll)}
+                    className="mt-3 flex items-center gap-1 text-xs text-slate-400 hover:text-slate-200 transition-colors">
                     {showAll
                       ? <><ChevronUp className="w-3 h-3" /> Свернуть</>
-                      : <><ChevronDown className="w-3 h-3" /> Показать все ({allNodes.length})</>
-                    }
+                      : <><ChevronDown className="w-3 h-3" /> Показать все ({allNodes.length})</>}
                   </button>
                 )}
               </>
             )}
           </div>
 
-          {/* Кнопка */}
+          {/* Кнопка генерации */}
           <button
             type="button"
             onClick={handleGenerate}
@@ -286,16 +348,96 @@ export default function Reports() {
           {selected.length === 0 && (
             <p className="text-xs text-slate-600 text-center -mt-3">Выберите хотя бы один узел</p>
           )}
-          {period === 'custom' && selected.length > 0 && (!dateFrom || !dateTo) && (
-            <p className="text-xs text-slate-600 text-center -mt-3">Укажите начало и конец диапазона</p>
-          )}
+
+          {/* История отчётов */}
+          <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setShowHistory(v => !v)}
+              className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-700/30 transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <History className="w-4 h-4 text-amber-400" />
+                <span className="text-sm font-semibold text-slate-200">История отчётов</span>
+                {history.length > 0 && (
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30">
+                    {history.length}
+                  </span>
+                )}
+              </div>
+              {showHistory ? <ChevronUp className="w-4 h-4 text-slate-500" /> : <ChevronDown className="w-4 h-4 text-slate-500" />}
+            </button>
+
+            {showHistory && (
+              <div className="border-t border-slate-700/40">
+                {historyLoading ? (
+                  <p className="text-xs text-slate-500 text-center py-4">Загрузка...</p>
+                ) : history.length === 0 ? (
+                  <p className="text-xs text-slate-600 text-center py-4">Отчётов пока нет</p>
+                ) : (
+                  <div className="max-h-64 overflow-y-auto divide-y divide-slate-700/30">
+                    {history.map(item => (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleLoadHistory(item)}
+                        className={`w-full text-left px-4 py-3 flex items-start gap-2 hover:bg-slate-700/30 transition-colors
+                          ${activeHistoryId === item.id ? 'bg-violet-500/10' : ''}`}
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-xs font-medium text-slate-300 truncate">
+                              {periodLabel(item.period, item.fromDate, item.toDate)}
+                            </span>
+                          </div>
+                          <div className="text-xs text-slate-500 truncate">
+                            {formatDate(item.createdAt)} · {item.nodes?.length ?? 0} узл.
+                          </div>
+                          {item.preview && (
+                            <div className="text-xs text-slate-600 mt-0.5 truncate">{item.preview}…</div>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={e => handleDeleteHistory(e, item.id)}
+                          className="shrink-0 p-1 text-slate-700 hover:text-red-400 transition-colors mt-0.5"
+                          title="Удалить"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Правая колонка — результат */}
         <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-5 flex flex-col min-h-[400px]">
-          <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-700/40">
-            <Bot className="w-4 h-4 text-violet-400" />
-            <span className="text-sm font-semibold text-slate-200">Отчёт GigaChat</span>
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-700/40">
+            <div className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-violet-400" />
+              <span className="text-sm font-semibold text-slate-200">Отчёт GigaChat</span>
+              {reportMeta && (
+                <span className="text-xs text-slate-500 hidden sm:block">
+                  · {periodLabel(reportMeta.period, reportMeta.fromDate, reportMeta.toDate)}
+                </span>
+              )}
+            </div>
+            {report && !loading && (
+              <button
+                type="button"
+                onClick={() => exportTxt(report, periodLabel(reportMeta?.period, reportMeta?.fromDate, reportMeta?.toDate))}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                  bg-slate-700/60 text-slate-300 border border-slate-600/50 hover:bg-slate-600/60 hover:text-slate-100 transition-colors"
+                title="Скачать как .txt"
+              >
+                <Download className="w-3.5 h-3.5" />
+                Экспорт .txt
+              </button>
+            )}
           </div>
 
           {loading && (

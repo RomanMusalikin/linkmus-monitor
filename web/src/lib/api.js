@@ -201,6 +201,27 @@ export async function saveNodeServiceVisibility(name, visibility) {
   if (!res.ok) throw new Error('Ошибка сохранения настроек видимости');
 }
 
+export async function getReportHistory() {
+  const res = await fetch(`${API_BASE}/reports`, { headers: authHeaders() });
+  if (res.status === 401) throw Object.assign(new Error('unauthorized'), { status: 401 });
+  if (!res.ok) throw new Error('Ошибка получения истории отчётов');
+  return res.json();
+}
+
+export async function getReportById(id) {
+  const res = await fetch(`${API_BASE}/reports/${id}`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Ошибка загрузки отчёта');
+  return res.json();
+}
+
+export async function deleteReport(id) {
+  const res = await fetch(`${API_BASE}/reports/${id}`, {
+    method: 'DELETE',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Ошибка удаления отчёта');
+}
+
 export async function sendTestTelegram() {
   const res = await fetch(`${API_BASE}/settings/alerts/test-telegram`, {
     method: 'POST',

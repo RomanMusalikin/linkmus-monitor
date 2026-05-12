@@ -233,6 +233,18 @@ func MigrateDB(db *sql.DB) {
 		port  INTEGER NOT NULL
 	)`)
 
+	// История AI-отчётов
+	db.Exec(`
+	CREATE TABLE IF NOT EXISTS report_history (
+		id         INTEGER PRIMARY KEY AUTOINCREMENT,
+		created_at TEXT    NOT NULL,
+		period     TEXT    NOT NULL,
+		from_date  TEXT    DEFAULT '',
+		to_date    TEXT    DEFAULT '',
+		nodes      TEXT    NOT NULL,
+		report     TEXT    NOT NULL
+	)`)
+
 	// Видимость сервисов для каждого узла
 	db.Exec(`
 	CREATE TABLE IF NOT EXISTS node_service_visibility (

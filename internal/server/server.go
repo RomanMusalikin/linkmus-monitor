@@ -146,6 +146,10 @@ func Run() {
 	// Генерация отчёта через GigaChat
 	http.HandleFunc("/api/report", requireAuth(HandleReport))
 
+	// История отчётов
+	http.HandleFunc("/api/reports", requireAuth(HandleReportHistory))
+	http.HandleFunc("/api/reports/", requireAuth(HandleReportHistory))
+
 	// Фронтенд — статические файлы с SPA-fallback
 	webPath := os.Getenv("WEB_PATH")
 	if webPath == "" {

@@ -5,9 +5,115 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// ReportHistoryItem — запись в истории отчётов (без полного текста для списка)
+type ReportHistoryItem struct {
+	ID        int    `json:"id"`
+	CreatedAt string `json:"createdAt"`
+	Period    string `json:"period"`
+	FromDate  string `json:"fromDate"`
+	ToDate    string `json:"toDate"`
+	Nodes     []string `json:"nodes"`
+	Preview   string `json:"preview"` // первые 120 символов отчёта
+}
+
+// ReportHistoryFull — полная запись с текстом отчёта
+type ReportHistoryFull struct {
+	ReportHistoryItem
+	Report string `json:"report"`
+}
+
+func saveReportHistory(db *sql.DB, period, from, to string, nodes []string, report string) {
+	nodesJSON, _ := json.Marshal(nodes)
+	db.Exec(`INSERT INTO report_history(created_at, period, from_date, to_date, nodes, report)
+		VALUES(?,?,?,?,?,?)`,
+		time.Now().UTC().Format(time.RFC3339),
+		period, from, to, string(nodesJSON), report)
+	// Оставляем не более 100 последних отчётов
+	db.Exec(`DELETE FROM report_history WHERE id NOT IN (
+		SELECT id FROM report_history ORDER BY id DESC LIMIT 100)`)
+}
+
+func getReportHistory(db *sql.DB) []ReportHistoryItem {
+	rows, err := db.Query(`SELECT id, created_at, period, from_date, to_date, nodes,
+		substr(report, 1, 120) FROM report_history ORDER BY id DESC`)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+	var result []ReportHistoryItem
+	for rows.Next() {
+		var item ReportHistoryItem
+		var nodesJSON string
+		if err := rows.Scan(&item.ID, &item.CreatedAt, &item.Period, &item.FromDate, &item.ToDate, &nodesJSON, &item.Preview); err == nil {
+			json.Unmarshal([]byte(nodesJSON), &item.Nodes)
+			result = append(result, item)
+		}
+	}
+	return result
+}
+
+func getReportByID(db *sql.DB, id int) (ReportHistoryFull, bool) {
+	var item ReportHistoryFull
+	var nodesJSON string
+	err := db.QueryRow(`SELECT id, created_at, period, from_date, to_date, nodes, report
+		FROM report_history WHERE id=?`, id).
+		Scan(&item.ID, &item.CreatedAt, &item.Period, &item.FromDate, &item.ToDate, &nodesJSON, &item.Report)
+	if err != nil {
+		return item, false
+	}
+	json.Unmarshal([]byte(nodesJSON), &item.Nodes)
+	return item, true
+}
+
+// HandleReportHistory — GET /api/reports  |  GET /api/reports/{id}  |  DELETE /api/reports/{id}
+func HandleReportHistory(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	corsHeaders(w)
+
+	if r.Method == http.MethodOptions {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	idStr := strings.TrimPrefix(r.URL.Path, "/api/reports/")
+	idStr = strings.TrimRight(idStr, "/")
+
+	// GET /api/reports — список
+	if idStr == "" && r.Method == http.MethodGet {
+		items := getReportHistory(dbConn)
+		if items == nil {
+			items = []ReportHistoryItem{}
+		}
+		json.NewEncoder(w).Encode(items)
+		return
+	}
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil || id <= 0 {
+		http.Error(w, `{"error":"invalid id"}`, http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		item, ok := getReportByID(dbConn, id)
+		if !ok {
+			http.Error(w, `{"error":"not found"}`, http.StatusNotFound)
+			return
+		}
+		json.NewEncoder(w).Encode(item)
+	case http.MethodDelete:
+		dbConn.Exec(`DELETE FROM report_history WHERE id=?`, id)
+		w.WriteHeader(http.StatusOK)
+	default:
+		http.Error(w, `{"error":"method not allowed"}`, http.StatusMethodNotAllowed)
+	}
+}
 
 // ReportRequest — тело запроса на генерацию отчёта.
 // Либо указывается Period (относительный), либо From+To (произвольный диапазон в формате "2006-01-02").
@@ -95,6 +201,7 @@ func HandleReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go saveReportHistory(dbConn, req.Period, req.From, req.To, req.Nodes, report)
 	json.NewEncoder(w).Encode(map[string]string{"report": report})
 }
 
