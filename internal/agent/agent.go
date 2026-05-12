@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"runtime"
 	"strings"
 	"time"
 
@@ -92,12 +93,14 @@ var Version = "unknown"
 const maxLogSize = 5 * 1024 * 1024 // 5 МБ
 
 func Run() {
-	// Пишем логи в файл рядом с exe — работает при запуске как служба Windows
-	exe, _ := os.Executable()
-	logPath := strings.TrimSuffix(exe, ".exe") + ".log"
-	rotateLog(logPath)
-	if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
-		log.SetOutput(f)
+	// На Linux systemd захватывает stdout в journalctl — файловый лог нужен только для Windows-службы
+	if runtime.GOOS != "linux" {
+		exe, _ := os.Executable()
+		logPath := strings.TrimSuffix(exe, ".exe") + ".log"
+		rotateLog(logPath)
+		if f, err := os.OpenFile(logPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644); err == nil {
+			log.SetOutput(f)
+		}
 	}
 
 	cfg, err := LoadConfig(configPath())

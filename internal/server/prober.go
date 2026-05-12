@@ -129,13 +129,18 @@ func runProbes(db *sql.DB) {
 			probeCache[t.ip] = result
 			probeCacheMu.Unlock()
 
-			// Пробы пользовательских сервисов
+			// Пробы пользовательских сервисов (с учётом per-node переопределений портов)
+			customPortOverrides := GetNodeCustomServicePorts(db, t.name)
 			var customResults []CustomServiceResult
 			for _, svc := range customs {
-				ok, ms := probeTCP(t.ip, fmt.Sprintf("%d", svc.Port))
+				port := svc.Port
+				if p, ok := customPortOverrides[svc.ID]; ok {
+					port = p
+				}
+				reachable, ms := probeTCP(t.ip, fmt.Sprintf("%d", port))
 				customResults = append(customResults, CustomServiceResult{
-					ID: svc.ID, Name: svc.Name, Port: svc.Port,
-					Reachable: ok, Ms: ms,
+					ID: svc.ID, Name: svc.Name, Port: port,
+					Reachable: reachable, Ms: ms,
 				})
 			}
 			customProbeCacheMu.Lock()

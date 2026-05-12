@@ -336,6 +336,37 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GET /api/nodes/{name}/custom-ports — per-node переопределения портов кастомных сервисов
+	if strings.HasSuffix(rest, "/custom-ports") && r.Method == http.MethodGet {
+		name := strings.TrimSuffix(rest, "/custom-ports")
+		if name == "" {
+			http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(GetNodeCustomServicePorts(dbConn, name))
+		return
+	}
+
+	// PUT /api/nodes/{name}/custom-ports — сохранить per-node порты кастомных сервисов
+	if strings.HasSuffix(rest, "/custom-ports") && r.Method == http.MethodPut {
+		name := strings.TrimSuffix(rest, "/custom-ports")
+		if name == "" {
+			http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
+			return
+		}
+		var body map[int]int
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			http.Error(w, `{"error":"invalid json"}`, http.StatusBadRequest)
+			return
+		}
+		if err := SaveNodeCustomServicePorts(dbConn, name, body); err != nil {
+			http.Error(w, `{"error":"db error"}`, http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
 	// PUT /api/nodes/{name}/alias
 	if strings.HasSuffix(rest, "/alias") && r.Method == http.MethodPut {
 		name := strings.TrimSuffix(rest, "/alias")
@@ -378,6 +409,7 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 	dbConn.Exec(`DELETE FROM node_aliases WHERE node_name = ?`, name)
 	dbConn.Exec(`DELETE FROM node_port_overrides WHERE node_name = ?`, name)
 	dbConn.Exec(`DELETE FROM node_service_visibility WHERE node_name = ?`, name)
+	dbConn.Exec(`DELETE FROM node_custom_service_ports WHERE node_name = ?`, name)
 	removeFromNodesCache(name)
 	w.WriteHeader(http.StatusOK)
 }

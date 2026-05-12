@@ -116,7 +116,40 @@ func CreateCustomService(db *sql.DB, name string, port int) (CustomService, erro
 func DeleteCustomService(db *sql.DB, id int) error {
 	_, err := db.Exec(`DELETE FROM custom_services WHERE id=?`, id)
 	db.Exec(`DELETE FROM node_service_visibility WHERE service_key=?`, fmt.Sprintf("custom_%d", id))
+	db.Exec(`DELETE FROM node_custom_service_ports WHERE service_id=?`, id)
 	return err
+}
+
+// GetNodeCustomServicePorts возвращает per-node переопределения портов кастомных сервисов.
+// Ключ — ID кастомного сервиса, значение — порт.
+func GetNodeCustomServicePorts(db *sql.DB, nodeName string) map[int]int {
+	rows, err := db.Query(`SELECT service_id, port FROM node_custom_service_ports WHERE node_name=?`, nodeName)
+	if err != nil {
+		return map[int]int{}
+	}
+	defer rows.Close()
+	result := map[int]int{}
+	for rows.Next() {
+		var id, port int
+		if rows.Scan(&id, &port) == nil {
+			result[id] = port
+		}
+	}
+	return result
+}
+
+// SaveNodeCustomServicePorts сохраняет per-node переопределения портов кастомных сервисов.
+// ports — карта {serviceId: port}; nil/пустая карта очищает все переопределения.
+func SaveNodeCustomServicePorts(db *sql.DB, nodeName string, ports map[int]int) error {
+	tx, err := db.Begin()
+	if err != nil {
+		return err
+	}
+	tx.Exec(`DELETE FROM node_custom_service_ports WHERE node_name=?`, nodeName)
+	for id, port := range ports {
+		tx.Exec(`INSERT INTO node_custom_service_ports(node_name, service_id, port) VALUES(?,?,?)`, nodeName, id, port)
+	}
+	return tx.Commit()
 }
 
 // NodeServiceVisibility — карта видимости сервисов для конкретного узла.

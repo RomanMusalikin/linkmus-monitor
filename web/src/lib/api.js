@@ -201,6 +201,23 @@ export async function saveNodeServiceVisibility(name, visibility) {
   if (!res.ok) throw new Error('Ошибка сохранения настроек видимости');
 }
 
+export async function fetchNodeCustomPorts(name) {
+  const res = await fetch(`${API_BASE}/nodes/${encodeURIComponent(name)}/custom-ports`, {
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Ошибка получения портов кастомных сервисов');
+  return res.json();
+}
+
+export async function saveNodeCustomPorts(name, ports) {
+  const res = await fetch(`${API_BASE}/nodes/${encodeURIComponent(name)}/custom-ports`, {
+    method: 'PUT',
+    headers: authHeaders(),
+    body: JSON.stringify(ports),
+  });
+  if (!res.ok) throw new Error('Ошибка сохранения портов кастомных сервисов');
+}
+
 export async function getReportHistory() {
   const res = await fetch(`${API_BASE}/reports`, { headers: authHeaders() });
   if (res.status === 401) throw Object.assign(new Error('unauthorized'), { status: 401 });

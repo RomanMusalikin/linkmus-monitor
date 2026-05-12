@@ -254,6 +254,15 @@ func MigrateDB(db *sql.DB) {
 		PRIMARY KEY (node_name, service_key)
 	)`)
 
+	// Переопределения портов кастомных сервисов для конкретных узлов
+	db.Exec(`
+	CREATE TABLE IF NOT EXISTS node_custom_service_ports (
+		node_name   TEXT    NOT NULL,
+		service_id  INTEGER NOT NULL,
+		port        INTEGER NOT NULL,
+		PRIMARY KEY (node_name, service_id)
+	)`)
+
 	// Индексы: критически важны для производительности при большом числе узлов
 	indexes := []string{
 		`CREATE INDEX IF NOT EXISTS idx_metrics_node_ts ON metrics(node_name, timestamp)`,

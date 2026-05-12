@@ -5,7 +5,7 @@ import {
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
   Wifi, MemoryStick, Trash2, Download, Pencil, Check, X
 } from 'lucide-react';
-import { deleteNode, fetchNodes, fetchNodeHistory, renameNode, getPortSettings, getNodePortOverride, saveNodePortOverride, getNodeServiceVisibility, saveNodeServiceVisibility } from '../lib/api';
+import { deleteNode, fetchNodes, fetchNodeHistory, renameNode, getPortSettings, getNodePortOverride, saveNodePortOverride, getNodeServiceVisibility, saveNodeServiceVisibility, getCustomServices, fetchNodeCustomPorts, saveNodeCustomPorts } from '../lib/api';
 import { useNodesContext } from '../context/NodesContext';
 import { useVersion } from '../hooks/useVersion';
 import CpuGauge from '../components/charts/CpuGauge';
@@ -247,14 +247,21 @@ export default function NodeDetail() {
   const [visibilityDraft, setVisibilityDraft] = useState({});
   const [savingVisibility, setSavingVisibility] = useState(false);
 
+  const [allCustomServices, setAllCustomServices] = useState([]);
+  const [customPortOverride, setCustomPortOverride] = useState({});
+  const [customPortDraft, setCustomPortDraft] = useState({});
+  const [savingCustomPorts, setSavingCustomPorts] = useState(false);
+
   useEffect(() => {
     getPortSettings().then(setPortSettings).catch(() => {});
+    getCustomServices().then(svcs => setAllCustomServices(svcs || [])).catch(() => {});
   }, []);
 
   useEffect(() => {
     if (!nodeId) return;
     getNodePortOverride(nodeId).then(setPortOverride).catch(() => {});
     getNodeServiceVisibility(nodeId).then(setServiceVisibility).catch(() => {});
+    fetchNodeCustomPorts(nodeId).then(setCustomPortOverride).catch(() => {});
   }, [nodeId]);
 
   // Сбрасываем весь локальный стейт при смене узла
@@ -1183,11 +1190,13 @@ export default function NodeDetail() {
                 </div>
                 {[
                   { key: 'ssh',   label: 'SSH' },
-                  { key: 'rdp',   label: 'Remote Desktop (RDP)' },
-                  { key: 'smb',   label: 'File Sharing (SMB)' },
-                  { key: 'winrm', label: 'WinRM' },
+                  ...(isWindows ? [
+                    { key: 'rdp',   label: 'Remote Desktop (RDP)' },
+                    { key: 'smb',   label: 'File Sharing (SMB)' },
+                    { key: 'winrm', label: 'WinRM' },
+                  ] : []),
                   { key: 'http',  label: 'HTTP' },
-                  ...(node.customServices || []).map(svc => ({ key: `custom_${svc.id}`, label: svc.name })),
+                  ...allCustomServices.map(svc => ({ key: `custom_${svc.id}`, label: svc.name })),
                 ].map(({ key, label }) => (
                   <label key={key} className="flex items-center gap-2.5 cursor-pointer">
                     <input
@@ -1230,7 +1239,7 @@ export default function NodeDetail() {
           <div className="mt-3 pt-3 border-t border-slate-700/40">
             {!editingPorts ? (
               <button
-                onClick={() => { setPortDraft({ ...portOverride }); setEditingPorts(true); }}
+                onClick={() => { setPortDraft({ ...portOverride }); setCustomPortDraft({ ...customPortOverride }); setEditingPorts(true); }}
                 className="text-xs text-slate-400 hover:text-slate-200 transition-colors flex items-center gap-1"
               >
                 <Pencil size={12} /> Настроить порты для этого узла
@@ -1243,9 +1252,11 @@ export default function NodeDetail() {
                 {[
                   { key: 'sshPort',   label: 'SSH',   def: portSettings.sshPort },
                   { key: 'httpPort',  label: 'HTTP',  def: portSettings.httpPort },
-                  { key: 'rdpPort',   label: 'RDP',   def: portSettings.rdpPort },
-                  { key: 'smbPort',   label: 'SMB',   def: portSettings.smbPort },
-                  { key: 'winrmPort', label: 'WinRM', def: portSettings.winrmPort },
+                  ...(isWindows ? [
+                    { key: 'rdpPort',   label: 'RDP',   def: portSettings.rdpPort },
+                    { key: 'smbPort',   label: 'SMB',   def: portSettings.smbPort },
+                    { key: 'winrmPort', label: 'WinRM', def: portSettings.winrmPort },
+                  ] : []),
                 ].map(({ key, label, def }) => (
                   <div key={key} className="flex items-center gap-3">
                     <span className="text-xs text-slate-400 w-16 shrink-0">{label}</span>
@@ -1270,21 +1281,52 @@ export default function NodeDetail() {
                     )}
                   </div>
                 ))}
+                {allCustomServices.map(svc => (
+                  <div key={svc.id} className="flex items-center gap-3">
+                    <span className="text-xs text-slate-400 w-16 shrink-0 truncate" title={svc.name}>{svc.name}</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      placeholder={String(svc.port)}
+                      value={customPortDraft[svc.id] ?? ''}
+                      onChange={e => {
+                        const raw = e.target.value.replace(/[^0-9]/g, '');
+                        const v = raw === '' ? null : Math.min(65535, Math.max(1, parseInt(raw, 10)));
+                        setCustomPortDraft(d => ({ ...d, [svc.id]: v }));
+                      }}
+                      className="w-24 bg-slate-800 border border-slate-600 rounded px-2 py-1 text-xs text-slate-200 focus:outline-none focus:border-slate-400"
+                    />
+                    {customPortDraft[svc.id] != null && (
+                      <button
+                        onClick={() => setCustomPortDraft(d => { const n = { ...d }; delete n[svc.id]; return n; })}
+                        className="text-slate-600 hover:text-slate-400"
+                        title="Сбросить к дефолту"
+                      ><X size={12} /></button>
+                    )}
+                  </div>
+                ))}
                 <div className="flex gap-2 pt-1">
                   <button
-                    disabled={savingPorts}
+                    disabled={savingPorts || savingCustomPorts}
                     onClick={async () => {
                       setSavingPorts(true);
+                      setSavingCustomPorts(true);
                       try {
                         await saveNodePortOverride(nodeId, portDraft);
                         setPortOverride(portDraft);
+                        const filtered = Object.fromEntries(
+                          Object.entries(customPortDraft).filter(([, v]) => v != null).map(([k, v]) => [Number(k), v])
+                        );
+                        await saveNodeCustomPorts(nodeId, filtered);
+                        setCustomPortOverride(filtered);
                         setEditingPorts(false);
                       } catch { /* ignore */ }
                       setSavingPorts(false);
+                      setSavingCustomPorts(false);
                     }}
                     className="flex items-center gap-1 px-3 py-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs rounded transition-colors disabled:opacity-50"
                   >
-                    <Check size={12} /> {savingPorts ? 'Сохраняю...' : 'Сохранить'}
+                    <Check size={12} /> {(savingPorts || savingCustomPorts) ? 'Сохраняю...' : 'Сохранить'}
                   </button>
                   <button
                     onClick={() => setEditingPorts(false)}
