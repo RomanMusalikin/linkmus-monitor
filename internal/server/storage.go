@@ -171,6 +171,8 @@ func MigrateDB(db *sql.DB) {
 		`ALTER TABLE alert_settings ADD COLUMN tg_chat_id   TEXT    DEFAULT ''`,
 		`ALTER TABLE alert_settings ADD COLUMN tg_topic_id  INTEGER DEFAULT 0`,
 		`ALTER TABLE alert_settings ADD COLUMN tg_enabled   INTEGER DEFAULT 0`,
+		`ALTER TABLE port_settings      ADD COLUMN https_port INTEGER DEFAULT 0`,
+		`ALTER TABLE node_port_overrides ADD COLUMN https_port INTEGER`,
 	}
 	for _, stmt := range migrations {
 		db.Exec(stmt) // игнорируем ошибку — колонка уже существует
@@ -537,11 +539,13 @@ func GetLatestNodes(db *sql.DB, full bool) ([]NodeSummary, error) {
 			RDPReachable:   probe.RDPReachable,
 			SMBReachable:   probe.SMBReachable,
 			HTTPReachable:  probe.HTTPReachable,
+			HTTPSReachable: probe.HTTPSReachable,
 			WinRMReachable: probe.WinRMReachable,
 			SSHMs:          probe.SSHMs,
 			RDPMs:          probe.RDPMs,
 			SMBMs:          probe.SMBMs,
 			HTTPMs:         probe.HTTPMs,
+			HTTPSMs:        probe.HTTPSMs,
 			WinRMMs:        probe.WinRMMs,
 			CustomServices: GetCustomProbe(r.ip),
 			SNMPCollected:  snmp.Collected,
@@ -570,7 +574,7 @@ func formatHistoryTime(ts string) string {
 	return ts
 }
 
-const dayBucketDur = 5 * time.Minute
+const dayBucketDur = 3 * time.Minute
 
 func queryCPUHistory(db *sql.DB, name string, full bool) []CpuPoint {
 	if !full {

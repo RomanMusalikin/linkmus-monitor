@@ -10,24 +10,25 @@ type PortSettings struct {
 	RDPPort   int `json:"rdpPort"`
 	SMBPort   int `json:"smbPort"`
 	HTTPPort  int `json:"httpPort"`
+	HTTPSPort int `json:"httpsPort"`
 	WinRMPort int `json:"winrmPort"`
 }
 
 func GetPortSettings(db *sql.DB) PortSettings {
-	s := PortSettings{SSHPort: 22, RDPPort: 3389, SMBPort: 445, HTTPPort: 80, WinRMPort: 5985}
-	db.QueryRow(`SELECT ssh_port,rdp_port,smb_port,http_port,winrm_port FROM port_settings WHERE id=1`).
-		Scan(&s.SSHPort, &s.RDPPort, &s.SMBPort, &s.HTTPPort, &s.WinRMPort)
+	s := PortSettings{SSHPort: 22, RDPPort: 3389, SMBPort: 445, HTTPPort: 80, HTTPSPort: 0, WinRMPort: 5985}
+	db.QueryRow(`SELECT ssh_port,rdp_port,smb_port,http_port,COALESCE(https_port,0),winrm_port FROM port_settings WHERE id=1`).
+		Scan(&s.SSHPort, &s.RDPPort, &s.SMBPort, &s.HTTPPort, &s.HTTPSPort, &s.WinRMPort)
 	return s
 }
 
 func SavePortSettings(db *sql.DB, s PortSettings) error {
-	_, err := db.Exec(`INSERT INTO port_settings (id,ssh_port,rdp_port,smb_port,http_port,winrm_port)
-		VALUES (1,?,?,?,?,?)
+	_, err := db.Exec(`INSERT INTO port_settings (id,ssh_port,rdp_port,smb_port,http_port,https_port,winrm_port)
+		VALUES (1,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  ssh_port=excluded.ssh_port, rdp_port=excluded.rdp_port,
 		  smb_port=excluded.smb_port, http_port=excluded.http_port,
-		  winrm_port=excluded.winrm_port`,
-		s.SSHPort, s.RDPPort, s.SMBPort, s.HTTPPort, s.WinRMPort)
+		  https_port=excluded.https_port, winrm_port=excluded.winrm_port`,
+		s.SSHPort, s.RDPPort, s.SMBPort, s.HTTPPort, s.HTTPSPort, s.WinRMPort)
 	return err
 }
 
@@ -38,26 +39,27 @@ type NodePortOverride struct {
 	RDPPort   *int `json:"rdpPort"`
 	SMBPort   *int `json:"smbPort"`
 	HTTPPort  *int `json:"httpPort"`
+	HTTPSPort *int `json:"httpsPort"`
 	WinRMPort *int `json:"winrmPort"`
 }
 
 func GetNodePortOverride(db *sql.DB, nodeName string) NodePortOverride {
 	var o NodePortOverride
-	db.QueryRow(`SELECT ssh_port,rdp_port,smb_port,http_port,winrm_port
+	db.QueryRow(`SELECT ssh_port,rdp_port,smb_port,http_port,https_port,winrm_port
 		FROM node_port_overrides WHERE node_name=?`, nodeName).
-		Scan(&o.SSHPort, &o.RDPPort, &o.SMBPort, &o.HTTPPort, &o.WinRMPort)
+		Scan(&o.SSHPort, &o.RDPPort, &o.SMBPort, &o.HTTPPort, &o.HTTPSPort, &o.WinRMPort)
 	return o
 }
 
 func SaveNodePortOverride(db *sql.DB, nodeName string, o NodePortOverride) error {
 	_, err := db.Exec(`INSERT INTO node_port_overrides
-		(node_name,ssh_port,rdp_port,smb_port,http_port,winrm_port)
-		VALUES (?,?,?,?,?,?)
+		(node_name,ssh_port,rdp_port,smb_port,http_port,https_port,winrm_port)
+		VALUES (?,?,?,?,?,?,?)
 		ON CONFLICT(node_name) DO UPDATE SET
 		  ssh_port=excluded.ssh_port, rdp_port=excluded.rdp_port,
 		  smb_port=excluded.smb_port, http_port=excluded.http_port,
-		  winrm_port=excluded.winrm_port`,
-		nodeName, o.SSHPort, o.RDPPort, o.SMBPort, o.HTTPPort, o.WinRMPort)
+		  https_port=excluded.https_port, winrm_port=excluded.winrm_port`,
+		nodeName, o.SSHPort, o.RDPPort, o.SMBPort, o.HTTPPort, o.HTTPSPort, o.WinRMPort)
 	return err
 }
 
@@ -68,6 +70,7 @@ func EffectivePortSettings(global PortSettings, override NodePortOverride) PortS
 	if override.RDPPort != nil   { s.RDPPort   = *override.RDPPort }
 	if override.SMBPort != nil   { s.SMBPort   = *override.SMBPort }
 	if override.HTTPPort != nil  { s.HTTPPort  = *override.HTTPPort }
+	if override.HTTPSPort != nil { s.HTTPSPort = *override.HTTPSPort }
 	if override.WinRMPort != nil { s.WinRMPort = *override.WinRMPort }
 	return s
 }

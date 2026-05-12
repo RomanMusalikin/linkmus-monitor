@@ -236,7 +236,8 @@ export default function NodeDetail() {
   const exportCloseTimer = useRef(null);
   const [liveBuffer, setLiveBuffer] = useState([]);
   const liveBufferSeeded = useRef(false);
-  const [portSettings, setPortSettings] = useState({ sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, winrmPort: 5985 });
+  const [portSettings, setPortSettings] = useState({ sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, httpsPort: 0, winrmPort: 5985 });
+  const [showAllIfaces, setShowAllIfaces] = useState(false);
   const [portOverride, setPortOverride] = useState({});
   const [editingPorts, setEditingPorts] = useState(false);
   const [portDraft, setPortDraft] = useState({});
@@ -1124,24 +1125,37 @@ export default function NodeDetail() {
             </div>
 
             {/* Все интерфейсы */}
-            {node.allIfaces && node.allIfaces.length > 1 && (
-              <div className="pt-2 border-t border-slate-700/40">
-                <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">Все интерфейсы</div>
-                <div className="space-y-2">
-                  {node.allIfaces.map(iface => (
-                    <div key={iface.name}
-                      className="flex items-center justify-between text-xs py-1.5 border-b border-slate-700/20 last:border-0">
-                      <span className="text-slate-400 font-medium flex items-center gap-1.5">
-                        <Wifi className="w-3 h-3 text-slate-500" />{iface.name}
-                      </span>
-                      <span className="text-slate-500 tabular-nums">
-                        ↓{fmtBytes(iface.bytesRecvSec)} · ↑{fmtBytes(iface.bytesSentSec)}
-                      </span>
-                    </div>
-                  ))}
+            {node.allIfaces && node.allIfaces.length > 1 && (() => {
+              const isVirtual = n => /^(veth|br-|docker|virbr|lo$)/.test(n);
+              const visible = showAllIfaces ? node.allIfaces : node.allIfaces.filter(i => !isVirtual(i.name));
+              const hiddenCount = node.allIfaces.length - node.allIfaces.filter(i => !isVirtual(i.name)).length;
+              return (
+                <div className="pt-2 border-t border-slate-700/40">
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="text-xs text-slate-500 font-medium uppercase tracking-wider">Все интерфейсы</div>
+                    {hiddenCount > 0 && (
+                      <button onClick={() => setShowAllIfaces(v => !v)}
+                        className="text-xs text-slate-500 hover:text-slate-300 transition-colors">
+                        {showAllIfaces ? 'скрыть виртуальные' : `+${hiddenCount} виртуальных`}
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-2">
+                    {visible.map(iface => (
+                      <div key={iface.name}
+                        className="flex items-center justify-between text-xs py-1.5 border-b border-slate-700/20 last:border-0">
+                        <span className={`font-medium flex items-center gap-1.5 ${isVirtual(iface.name) ? 'text-slate-500' : 'text-slate-400'}`}>
+                          <Wifi className="w-3 h-3 text-slate-500" />{iface.name}
+                        </span>
+                        <span className="text-slate-500 tabular-nums">
+                          ↓{fmtBytes(iface.bytesRecvSec)} · ↑{fmtBytes(iface.bytesSentSec)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            )}
+              );
+            })()}
 
             {/* График растягивается на оставшееся место */}
             <NetworkLines data={node.netHistory || []} className="flex-1 min-h-[160px]" />
@@ -1166,6 +1180,9 @@ export default function NodeDetail() {
             )}
             {serviceVisibility.http !== false && (
               <ServiceBadge label="HTTP" port={portOverride.httpPort ?? portSettings.httpPort} active={node.httpReachable} ms={node.httpMs} />
+            )}
+            {(portOverride.httpsPort ?? portSettings.httpsPort) > 0 && serviceVisibility.https !== false && (
+              <ServiceBadge label="HTTPS" port={portOverride.httpsPort ?? portSettings.httpsPort} active={node.httpsReachable} ms={node.httpsMs} />
             )}
             {(node.customServices || []).map(svc =>
               serviceVisibility[`custom_${svc.id}`] !== false && (
@@ -1196,6 +1213,7 @@ export default function NodeDetail() {
                     { key: 'winrm', label: 'WinRM' },
                   ] : []),
                   { key: 'http',  label: 'HTTP' },
+                  ...((portOverride.httpsPort ?? portSettings.httpsPort) > 0 ? [{ key: 'https', label: 'HTTPS' }] : []),
                   ...allCustomServices.map(svc => ({ key: `custom_${svc.id}`, label: svc.name })),
                 ].map(({ key, label }) => (
                   <label key={key} className="flex items-center gap-2.5 cursor-pointer">
@@ -1252,6 +1270,7 @@ export default function NodeDetail() {
                 {[
                   { key: 'sshPort',   label: 'SSH',   def: portSettings.sshPort },
                   { key: 'httpPort',  label: 'HTTP',  def: portSettings.httpPort },
+                  { key: 'httpsPort', label: 'HTTPS', def: portSettings.httpsPort || 443, hint: '0 = отключено' },
                   ...(isWindows ? [
                     { key: 'rdpPort',   label: 'RDP',   def: portSettings.rdpPort },
                     { key: 'smbPort',   label: 'SMB',   def: portSettings.smbPort },

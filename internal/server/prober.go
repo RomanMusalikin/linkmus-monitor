@@ -1,6 +1,7 @@
 package server
 
 import (
+	"crypto/tls"
 	"database/sql"
 	"fmt"
 	"net"
@@ -11,16 +12,18 @@ import (
 
 // ProbeResult — результаты TCP-проб для одного узла
 type ProbeResult struct {
-	SSHReachable   bool
-	RDPReachable   bool
-	SMBReachable   bool
-	HTTPReachable  bool
-	WinRMReachable bool
-	SSHMs          float64
-	RDPMs          float64
-	SMBMs          float64
-	HTTPMs         float64
-	WinRMMs        float64
+	SSHReachable    bool
+	RDPReachable    bool
+	SMBReachable    bool
+	HTTPReachable   bool
+	HTTPSReachable  bool
+	WinRMReachable  bool
+	SSHMs           float64
+	RDPMs           float64
+	SMBMs           float64
+	HTTPMs          float64
+	HTTPSMs         float64
+	WinRMMs         float64
 }
 
 var (
@@ -82,6 +85,23 @@ func probeHTTP(ip string, port int) (bool, float64) {
 	return resp.StatusCode < 500, ms
 }
 
+func probeHTTPS(ip string, port int) (bool, float64) {
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+	start := time.Now()
+	resp, err := client.Get(fmt.Sprintf("https://%s:%d/", ip, port))
+	ms := float64(time.Since(start).Nanoseconds()) / 1e6
+	if err != nil {
+		return false, 0
+	}
+	resp.Body.Close()
+	return resp.StatusCode < 500, ms
+}
+
 type nodeTarget struct {
 	ip   string
 	name string
@@ -123,6 +143,9 @@ func runProbes(db *sql.DB) {
 			result.RDPReachable, result.RDPMs = probeTCP(t.ip, fmt.Sprintf("%d", ports.RDPPort))
 			result.SMBReachable, result.SMBMs = probeTCP(t.ip, fmt.Sprintf("%d", ports.SMBPort))
 			result.HTTPReachable, result.HTTPMs = probeHTTP(t.ip, ports.HTTPPort)
+			if ports.HTTPSPort > 0 {
+				result.HTTPSReachable, result.HTTPSMs = probeHTTPS(t.ip, ports.HTTPSPort)
+			}
 			result.WinRMReachable, result.WinRMMs = probeTCP(t.ip, fmt.Sprintf("%d", ports.WinRMPort))
 
 			probeCacheMu.Lock()

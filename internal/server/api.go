@@ -152,13 +152,15 @@ type NodeSummary struct {
 	SSHReachable   bool    `json:"sshReachable"`
 	RDPReachable   bool    `json:"rdpReachable"`
 	SMBReachable   bool    `json:"smbReachable"`
-	HTTPReachable  bool    `json:"httpReachable"`
-	WinRMReachable bool    `json:"winrmReachable"`
-	SSHMs          float64 `json:"sshMs"`
-	RDPMs          float64 `json:"rdpMs"`
-	SMBMs          float64 `json:"smbMs"`
-	HTTPMs         float64 `json:"httpMs"`
-	WinRMMs        float64 `json:"winrmMs"`
+	HTTPReachable   bool    `json:"httpReachable"`
+	HTTPSReachable  bool    `json:"httpsReachable"`
+	WinRMReachable  bool    `json:"winrmReachable"`
+	SSHMs           float64 `json:"sshMs"`
+	RDPMs           float64 `json:"rdpMs"`
+	SMBMs           float64 `json:"smbMs"`
+	HTTPMs          float64 `json:"httpMs"`
+	HTTPSMs         float64 `json:"httpsMs"`
+	WinRMMs         float64 `json:"winrmMs"`
 
 	// Пользовательские сервисы
 	CustomServices []CustomServiceResult `json:"customServices"`
