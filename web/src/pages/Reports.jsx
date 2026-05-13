@@ -69,7 +69,7 @@ function NodeCheckbox({ node, checked, onToggle }) {
           <span className="text-xs text-slate-600 truncate hidden sm:block">({node.name})</span>
         )}
       </div>
-      <span className="text-xs text-slate-600 flex-shrink-0">{node.os || ''}</span>
+      <span className="text-xs text-slate-600 truncate max-w-[9rem]">{node.os || ''}</span>
     </button>
   );
 }

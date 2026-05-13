@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield, Bot, Plus, Trash2 } from 'lucide-react';
+import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield, Bot, Plus, Trash2, ChevronDown } from 'lucide-react';
 import { getAlertSettings, saveAlertSettings, sendTestEmail, sendTestTelegram, getPortSettings, savePortSettings, getGigachatSettings, saveGigachatSettings, getCustomServices, createCustomService, deleteCustomService } from '../lib/api';
 import { useNodesContext } from '../context/NodesContext';
 
@@ -20,6 +20,23 @@ function Input({ className = '', ...props }) {
         outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-colors ${className}`}
       {...props}
     />
+  );
+}
+
+function Select({ value, onChange, children }) {
+  return (
+    <div className="relative">
+      <select
+        value={value}
+        onChange={onChange}
+        className="w-full appearance-none px-3 py-2 pr-9 rounded-lg bg-slate-900/60 border border-slate-700
+          text-slate-200 text-sm outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20
+          transition-colors cursor-pointer"
+      >
+        {children}
+      </select>
+      <ChevronDown className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
+    </div>
   );
 }
 
@@ -390,28 +407,18 @@ export default function Settings() {
                 />
               </Field>
               <Field label="Scope" hint="GIGACHAT_API_PERS — личный, GIGACHAT_API_CORP — корпоративный">
-                <select
-                  value={gigachat.scope}
-                  onChange={e => setGigachat(p => ({ ...p, scope: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
-                    outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-colors"
-                >
+                <Select value={gigachat.scope} onChange={e => setGigachat(p => ({ ...p, scope: e.target.value }))}>
                   <option value="GIGACHAT_API_PERS">GIGACHAT_API_PERS (личный)</option>
                   <option value="GIGACHAT_API_B2B">GIGACHAT_API_B2B (B2B)</option>
                   <option value="GIGACHAT_API_CORP">GIGACHAT_API_CORP (корпоративный)</option>
-                </select>
+                </Select>
               </Field>
               <Field label="Модель" hint="GigaChat — базовая, Pro — продвинутая, Max — максимальная">
-                <select
-                  value={gigachat.model || 'GigaChat'}
-                  onChange={e => setGigachat(p => ({ ...p, model: e.target.value }))}
-                  className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
-                    outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-colors"
-                >
+                <Select value={gigachat.model || 'GigaChat'} onChange={e => setGigachat(p => ({ ...p, model: e.target.value }))}>
                   <option value="GigaChat">GigaChat (Lite)</option>
                   <option value="GigaChat-Pro">GigaChat-Pro</option>
                   <option value="GigaChat-Max">GigaChat-Max</option>
-                </select>
+                </Select>
               </Field>
             </div>
           </Section>

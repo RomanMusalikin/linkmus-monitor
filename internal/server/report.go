@@ -489,12 +489,8 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 		} else {
 			sb.WriteString(fmt.Sprintf("  Статус: ОФЛАЙН (последний раз онлайн: %s)\n", s.LastSeen))
 		}
-		sb.WriteString(fmt.Sprintf("  CPU: среднее %.1f%%, максимум %.1f%%, минимум %.1f%%",
+		sb.WriteString(fmt.Sprintf("  CPU: среднее %.1f%%, максимум %.1f%%, минимум %.1f%%\n",
 			s.AvgCPU, s.MaxCPU, s.MinCPU))
-		if s.StddevCPU > 0 {
-			sb.WriteString(fmt.Sprintf(", нестабильность (σ) %.1f%%", s.StddevCPU))
-		}
-		sb.WriteString("\n")
 		if s.CpuAbove60 > 0 || s.CpuAbove80 > 0 {
 			sb.WriteString(fmt.Sprintf("  CPU превышения: >60%% — %d раз, >80%% — %d раз (из %d точек)\n",
 				s.CpuAbove60, s.CpuAbove80, s.Samples))
