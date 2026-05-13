@@ -144,6 +144,8 @@ type nodeStats struct {
 	MaxDisk    float64
 	AvgNetRecv float64
 	AvgNetSent float64
+	MaxNetRecv float64
+	MaxNetSent float64
 	Samples    int
 
 	// Превышения порогов
@@ -165,6 +167,16 @@ type nodeStats struct {
 	SlotNight   float64 // 00–08
 	SlotDay     float64 // 08–20
 	SlotEvening float64 // 20–24
+
+	// Disk I/O (байт/сек)
+	AvgDiskRead  float64
+	AvgDiskWrite float64
+	MaxDiskRead  float64
+	MaxDiskWrite float64
+
+	// Потери связи
+	OutageCount    int     // количество инцидентов недоступности
+	OutageMinutes  float64 // суммарное время офлайна в минутах
 }
 
 // HandleReport — POST /api/report
@@ -266,7 +278,10 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 					AVG(avg_disk), MAX(avg_disk),
 					AVG(avg_net_recv), AVG(avg_net_sent),
 					COUNT(*),
-					COALESCE(AVG(avg_load_avg_1), 0), COALESCE(MAX(avg_load_avg_1), 0)
+					COALESCE(AVG(avg_load_avg_1), 0), COALESCE(MAX(avg_load_avg_1), 0),
+					COALESCE(AVG(avg_disk_read), 0), COALESCE(AVG(avg_disk_write), 0),
+					COALESCE(MAX(avg_disk_read), 0), COALESCE(MAX(avg_disk_write), 0),
+					COALESCE(MAX(avg_net_recv), 0), COALESCE(MAX(avg_net_sent), 0)
 				FROM metrics_hourly
 				WHERE node_name = ? AND hour >= ? AND hour <= ?
 			`, name, since, until)
@@ -277,6 +292,9 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 				&s.AvgNetRecv, &s.AvgNetSent,
 				&s.Samples,
 				&s.AvgLoad1, &s.MaxLoad1,
+				&s.AvgDiskRead, &s.AvgDiskWrite,
+				&s.MaxDiskRead, &s.MaxDiskWrite,
+				&s.MaxNetRecv, &s.MaxNetSent,
 			)
 		} else {
 			// stddev = sqrt(avg(x²) - avg(x)²)
@@ -290,7 +308,10 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 					COUNT(*),
 					AVG(cpu_usage * cpu_usage),
 					COALESCE(AVG(load_avg_1), 0), COALESCE(MAX(load_avg_1), 0), COALESCE(AVG(load_avg_5), 0),
-					COALESCE(AVG(cpu_steal), 0), COALESCE(MAX(cpu_steal), 0)
+					COALESCE(AVG(cpu_steal), 0), COALESCE(MAX(cpu_steal), 0),
+					COALESCE(AVG(disk_read_sec), 0), COALESCE(AVG(disk_write_sec), 0),
+					COALESCE(MAX(disk_read_sec), 0), COALESCE(MAX(disk_write_sec), 0),
+					COALESCE(MAX(net_bytes_recv), 0), COALESCE(MAX(net_bytes_sent), 0)
 				FROM metrics
 				WHERE node_name = ? AND timestamp >= ? AND timestamp <= ?
 			`, name, since, until)
@@ -303,12 +324,46 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 				&avgSq,
 				&s.AvgLoad1, &s.MaxLoad1, &s.AvgLoad5,
 				&s.AvgSteal, &s.MaxSteal,
+				&s.AvgDiskRead, &s.AvgDiskWrite,
+				&s.MaxDiskRead, &s.MaxDiskWrite,
+				&s.MaxNetRecv, &s.MaxNetSent,
 			)
 			s.StddevCPU = math.Sqrt(math.Max(0, avgSq-s.AvgCPU*s.AvgCPU))
 		}
 
 		if s.Samples == 0 {
 			continue
+		}
+
+		// Потери связи: ищем разрывы между соседними точками
+		// Порог зависит от периода: для коротких — 2 мин, для длинных — 15 мин
+		gapThreshold := 2.0 // минуты
+		if useHourly {
+			gapThreshold = 15.0
+		}
+		rows, err := db.Query(`
+			SELECT timestamp FROM metrics
+			WHERE node_name = ? AND timestamp >= ? AND timestamp <= ?
+			ORDER BY timestamp ASC
+		`, name, since, until)
+		if err == nil {
+			var timestamps []time.Time
+			for rows.Next() {
+				var ts string
+				if rows.Scan(&ts) == nil {
+					if t, err := time.Parse(time.RFC3339, ts); err == nil {
+						timestamps = append(timestamps, t)
+					}
+				}
+			}
+			rows.Close()
+			for i := 1; i < len(timestamps); i++ {
+				gap := timestamps[i].Sub(timestamps[i-1]).Minutes()
+				if gap > gapThreshold {
+					s.OutageCount++
+					s.OutageMinutes += gap
+				}
+			}
 		}
 
 		// Превышения порогов и временные слоты — всегда из таблицы metrics
@@ -473,8 +528,20 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 		}
 		sb.WriteString(fmt.Sprintf("  Диск: среднее %.1f%%, максимум %.1f%%\n",
 			s.AvgDisk, s.MaxDisk))
-		sb.WriteString(fmt.Sprintf("  Сеть: среднее получение %.1f КБ/с, отправка %.1f КБ/с\n",
-			s.AvgNetRecv/1024, s.AvgNetSent/1024))
+		sb.WriteString(fmt.Sprintf("  Сеть: получение среднее %.1f КБ/с (пик %.1f КБ/с), отправка среднее %.1f КБ/с (пик %.1f КБ/с)\n",
+			s.AvgNetRecv/1024, s.MaxNetRecv/1024,
+			s.AvgNetSent/1024, s.MaxNetSent/1024))
+		if s.AvgDiskRead > 0 || s.AvgDiskWrite > 0 {
+			sb.WriteString(fmt.Sprintf("  Диск I/O: чтение среднее %.1f КБ/с (пик %.1f КБ/с), запись среднее %.1f КБ/с (пик %.1f КБ/с)\n",
+				s.AvgDiskRead/1024, s.MaxDiskRead/1024,
+				s.AvgDiskWrite/1024, s.MaxDiskWrite/1024))
+		}
+		if s.OutageCount > 0 {
+			sb.WriteString(fmt.Sprintf("  Потери связи: %d инцидент(ов), суммарно %.0f мин офлайн\n",
+				s.OutageCount, s.OutageMinutes))
+		} else {
+			sb.WriteString("  Потери связи: не зафиксированы\n")
+		}
 		sb.WriteString(fmt.Sprintf("  Точек данных: %d\n\n", s.Samples))
 	}
 
@@ -493,6 +560,14 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 	sb.WriteString("  - до 80% — норма\n")
 	sb.WriteString("  - 80–90% — следует упомянуть\n")
 	sb.WriteString("  - выше 90% — критично\n\n")
+	sb.WriteString("Диск I/O:\n")
+	sb.WriteString("  - до 50 МБ/с — типичная нагрузка, не требует комментария\n")
+	sb.WriteString("  - 50–200 МБ/с — умеренно высокая, упомяни если пики частые\n")
+	sb.WriteString("  - выше 200 МБ/с среднее — высокая нагрузка на диск\n\n")
+	sb.WriteString("Доступность:\n")
+	sb.WriteString("  - нет потерь связи — отлично\n")
+	sb.WriteString("  - 1–2 кратковременных инцидента — незначительно, упомяни вскользь\n")
+	sb.WriteString("  - 3+ инцидентов или суммарно >30 мин офлайн — проблема, требует внимания\n\n")
 	sb.WriteString("CPU Steal (кража ресурсов гипервизором, актуально для виртуальных машин):\n")
 	sb.WriteString("  - 0% — отлично, ресурсы не воруются\n")
 	sb.WriteString("  - до 5% — допустимо\n")
