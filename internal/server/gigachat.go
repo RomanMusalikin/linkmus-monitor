@@ -20,14 +20,18 @@ type GigachatSettings struct {
 	ClientID     string `json:"clientId"`
 	ClientSecret string `json:"clientSecret"`
 	Scope        string `json:"scope"`
+	Model        string `json:"model"`
 }
 
 func GetGigachatSettings(db *sql.DB) GigachatSettings {
 	var s GigachatSettings
-	db.QueryRow(`SELECT client_id, client_secret, scope FROM gigachat_settings WHERE id=1`).
-		Scan(&s.ClientID, &s.ClientSecret, &s.Scope)
+	db.QueryRow(`SELECT client_id, client_secret, scope, COALESCE(model,'GigaChat') FROM gigachat_settings WHERE id=1`).
+		Scan(&s.ClientID, &s.ClientSecret, &s.Scope, &s.Model)
 	if s.Scope == "" {
 		s.Scope = "GIGACHAT_API_PERS"
+	}
+	if s.Model == "" {
+		s.Model = "GigaChat"
 	}
 	return s
 }
@@ -36,10 +40,13 @@ func SaveGigachatSettings(db *sql.DB, s GigachatSettings) error {
 	if s.Scope == "" {
 		s.Scope = "GIGACHAT_API_PERS"
 	}
+	if s.Model == "" {
+		s.Model = "GigaChat"
+	}
 	_, err := db.Exec(`
-		INSERT INTO gigachat_settings(id, client_id, client_secret, scope) VALUES(1,?,?,?)
-		ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id, client_secret=excluded.client_secret, scope=excluded.scope`,
-		s.ClientID, s.ClientSecret, s.Scope)
+		INSERT INTO gigachat_settings(id, client_id, client_secret, scope, model) VALUES(1,?,?,?,?)
+		ON CONFLICT(id) DO UPDATE SET client_id=excluded.client_id, client_secret=excluded.client_secret, scope=excluded.scope, model=excluded.model`,
+		s.ClientID, s.ClientSecret, s.Scope, s.Model)
 	return err
 }
 
@@ -109,9 +116,12 @@ func GigachatGetToken(s GigachatSettings) (string, error) {
 }
 
 // GigachatChat отправляет текст в GigaChat и возвращает ответ.
-func GigachatChat(token, prompt string) (string, error) {
+func GigachatChat(token, model, prompt string) (string, error) {
+	if model == "" {
+		model = "GigaChat"
+	}
 	body, err := json.Marshal(map[string]any{
-		"model": "GigaChat",
+		"model": model,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},

@@ -225,7 +225,7 @@ func HandleReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	report, err := GigachatChat(token, prompt)
+	report, err := GigachatChat(token, settings.Model, prompt)
 	if err != nil {
 		// сбрасываем кеш токена при ошибке
 		gcTokenMu.Lock()

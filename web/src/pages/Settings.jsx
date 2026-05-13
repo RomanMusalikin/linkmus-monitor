@@ -85,7 +85,7 @@ export default function Settings() {
   const [portsSaving, setPortsSaving] = useState(false);
   const [portsSaveMsg, setPortsSaveMsg] = useState('');
 
-  const [gigachat, setGigachat] = useState({ clientId: '', clientSecret: '', scope: 'GIGACHAT_API_PERS' });
+  const [gigachat, setGigachat] = useState({ clientId: '', clientSecret: '', scope: 'GIGACHAT_API_PERS', model: 'GigaChat' });
   const [gcSaving, setGcSaving] = useState(false);
   const [gcSaveMsg, setGcSaveMsg] = useState('');
 
@@ -399,6 +399,18 @@ export default function Settings() {
                   <option value="GIGACHAT_API_PERS">GIGACHAT_API_PERS (личный)</option>
                   <option value="GIGACHAT_API_B2B">GIGACHAT_API_B2B (B2B)</option>
                   <option value="GIGACHAT_API_CORP">GIGACHAT_API_CORP (корпоративный)</option>
+                </select>
+              </Field>
+              <Field label="Модель" hint="GigaChat — базовая, Pro — продвинутая, Max — максимальная">
+                <select
+                  value={gigachat.model || 'GigaChat'}
+                  onChange={e => setGigachat(p => ({ ...p, model: e.target.value }))}
+                  className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
+                    outline-none focus:border-blue-500/60 focus:ring-1 focus:ring-blue-500/20 transition-colors"
+                >
+                  <option value="GigaChat">GigaChat (Lite)</option>
+                  <option value="GigaChat-Pro">GigaChat-Pro</option>
+                  <option value="GigaChat-Max">GigaChat-Max</option>
                 </select>
               </Field>
             </div>

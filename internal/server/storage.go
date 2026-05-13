@@ -174,6 +174,7 @@ func MigrateDB(db *sql.DB) {
 		`ALTER TABLE alert_settings ADD COLUMN tg_enabled   INTEGER DEFAULT 0`,
 		`ALTER TABLE port_settings      ADD COLUMN https_port INTEGER DEFAULT 0`,
 		`ALTER TABLE node_port_overrides ADD COLUMN https_port INTEGER`,
+		`ALTER TABLE gigachat_settings  ADD COLUMN model TEXT DEFAULT 'GigaChat'`,
 	}
 	for _, stmt := range migrations {
 		db.Exec(stmt) // игнорируем ошибку — колонка уже существует
