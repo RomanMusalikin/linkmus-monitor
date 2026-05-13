@@ -514,7 +514,23 @@ export default function Reports() {
           )}
 
           {!loading && !error && report && (
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto space-y-4">
+              {reportMeta?.nodes?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {reportMeta.nodes.map(name => {
+                    const node = allNodes.find(n => n.name === name);
+                    const label = node?.displayName && node.displayName !== name ? node.displayName : name;
+                    return (
+                      <span key={name}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium
+                          bg-violet-500/10 border border-violet-500/20 text-violet-300">
+                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${node?.online ? 'bg-green-400' : 'bg-red-400'}`} />
+                        {label}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
               <ReportText text={report} />
             </div>
           )}

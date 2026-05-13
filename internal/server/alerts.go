@@ -16,21 +16,21 @@ import (
 )
 
 type AlertSettings struct {
-	SMTPHost      string `json:"smtpHost"`
-	SMTPPort      int    `json:"smtpPort"`
-	SMTPUser      string `json:"smtpUser"`
-	SMTPPass      string `json:"smtpPass"`
-	FromEmail     string `json:"fromEmail"`
-	ToEmail       string `json:"toEmail"`
-	CPUThreshold  int    `json:"cpuThreshold"`
-	RAMThreshold  int    `json:"ramThreshold"`
-	CooldownMin   int    `json:"cooldownMin"`
-	Enabled       bool   `json:"enabled"`
+	SMTPHost     string `json:"smtpHost"`
+	SMTPPort     int    `json:"smtpPort"`
+	SMTPUser     string `json:"smtpUser"`
+	SMTPPass     string `json:"smtpPass"`
+	FromEmail    string `json:"fromEmail"`
+	ToEmail      string `json:"toEmail"`
+	CPUThreshold int    `json:"cpuThreshold"`
+	RAMThreshold int    `json:"ramThreshold"`
+	CooldownMin  int    `json:"cooldownMin"`
+	Enabled      bool   `json:"enabled"`
 
-	TGBotToken  string `json:"tgBotToken"`
-	TGChatID    string `json:"tgChatID"`
-	TGTopicID   int    `json:"tgTopicID"`
-	TGEnabled   bool   `json:"tgEnabled"`
+	TGBotToken string `json:"tgBotToken"`
+	TGChatID   string `json:"tgChatID"`
+	TGTopicID  int    `json:"tgTopicID"`
+	TGEnabled  bool   `json:"tgEnabled"`
 }
 
 func GetAlertSettings(db *sql.DB) AlertSettings {
@@ -49,7 +49,7 @@ func GetAlertSettings(db *sql.DB) AlertSettings {
 
 func SaveAlertSettings(db *sql.DB, s AlertSettings) error {
 	s.TGBotToken = strings.TrimSpace(s.TGBotToken)
-	s.TGChatID   = strings.TrimSpace(s.TGChatID)
+	s.TGChatID = strings.TrimSpace(s.TGChatID)
 	_, err := db.Exec(`INSERT INTO alert_settings
 		(id,smtp_host,smtp_port,smtp_user,smtp_pass,from_email,to_email,
 		 cpu_threshold,ram_threshold,cooldown_min,enabled,
@@ -77,7 +77,7 @@ func SendTestEmail(s AlertSettings) error {
 
 // SendTestTelegram отправляет тестовое сообщение в Telegram.
 func SendTestTelegram(s AlertSettings) error {
-	return sendTelegram(s, "✅ *LinkMus Monitor* — тест уведомлений\n\nЕсли вы получили это сообщение, настройка Telegram работает корректно\\.")
+	return sendTelegram(s, "✅ *LinkMus Monitor* — тест уведомлений\n\nЕсли вы получили это сообщение, настройка Telegram работает корректно.")
 }
 
 // ── Трекер кулдаунов (в памяти) ─────────────────────────────────────────────
