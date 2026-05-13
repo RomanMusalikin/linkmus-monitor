@@ -74,37 +74,81 @@ function NodeCheckbox({ node, checked, onToggle }) {
   );
 }
 
+function renderInline(text) {
+  const parts = text.split(/\*\*(.+?)\*\*/g);
+  if (parts.length === 1) return text;
+  return parts.map((p, i) =>
+    i % 2 === 1 ? <strong key={i} className="text-slate-200 font-semibold">{p}</strong> : p
+  );
+}
+
 function ReportText({ text }) {
   const lines = text.split('\n');
   return (
-    <div className="space-y-1 text-sm text-slate-300 leading-relaxed">
+    <div className="text-sm text-slate-300 leading-relaxed space-y-0.5">
       {lines.map((line, i) => {
+        const trimmed = line.trim();
+
+        // Пустая строка
+        if (trimmed === '') return <div key={i} className="h-3" />;
+
+        // Markdown-заголовок (### Текст)
         if (/^#{1,3}\s/.test(line)) {
           const content = line.replace(/^#+\s/, '');
-          return <p key={i} className="font-semibold text-slate-100 mt-4 first:mt-0 text-base">{content}</p>;
-        }
-        if (/^\*\*(.+)\*\*$/.test(line)) {
-          return <p key={i} className="font-semibold text-slate-200">{line.replace(/\*\*/g, '')}</p>;
-        }
-        if (/^[-*•]\s/.test(line)) {
           return (
-            <div key={i} className="flex gap-2">
-              <span className="text-violet-400 flex-shrink-0 mt-0.5">•</span>
-              <span>{line.replace(/^[-*•]\s/, '').replace(/\*\*(.+?)\*\*/g, '$1')}</span>
+            <p key={i} className="font-bold text-slate-100 text-base mt-5 mb-1 first:mt-0 border-b border-slate-700/50 pb-1">
+              {content}
+            </p>
+          );
+        }
+
+        // Заголовок уровня 1: "1. ОБЩАЯ СВОДКА" (цифра + точка + пробел + заглавные)
+        if (/^\d+\.\s+[А-ЯA-Z\s]{4,}$/.test(trimmed)) {
+          return (
+            <p key={i} className="font-bold text-violet-300 text-sm mt-5 mb-1 first:mt-0 uppercase tracking-wide">
+              {trimmed}
+            </p>
+          );
+        }
+
+        // Подзаголовок узла: "2.1 Узел ..." или "2.1. Узел ..."
+        if (/^\d+\.\d+\.?\s/.test(trimmed)) {
+          return (
+            <p key={i} className="font-semibold text-slate-100 text-sm mt-4 mb-1 pl-0">
+              {renderInline(trimmed)}
+            </p>
+          );
+        }
+
+        // Строка целиком жирная **...**
+        if (/^\*\*(.+)\*\*$/.test(trimmed)) {
+          return <p key={i} className="font-semibold text-slate-200">{trimmed.replace(/\*\*/g, '')}</p>;
+        }
+
+        // Маркированный список (- / * / •)
+        if (/^[-*•]\s/.test(trimmed)) {
+          const content = trimmed.replace(/^[-*•]\s/, '');
+          return (
+            <div key={i} className="flex gap-2 pl-1">
+              <span className="text-violet-500 flex-shrink-0 mt-0.5 select-none">›</span>
+              <span className="text-slate-300">{renderInline(content)}</span>
             </div>
           );
         }
-        if (line.trim() === '') return <div key={i} className="h-2" />;
-        const parts = line.split(/\*\*(.+?)\*\*/g);
-        return (
-          <p key={i}>
-            {parts.map((part, j) =>
-              j % 2 === 1
-                ? <strong key={j} className="text-slate-200 font-semibold">{part}</strong>
-                : part
-            )}
-          </p>
-        );
+
+        // Вложенный подпункт (начинается с двух пробелов или таб + дефис)
+        if (/^(\s{2,}|\t)[-–]\s/.test(line)) {
+          const content = line.replace(/^[\s\t]+[-–]\s/, '');
+          return (
+            <div key={i} className="flex gap-2 pl-5">
+              <span className="text-slate-600 flex-shrink-0 mt-0.5 select-none">–</span>
+              <span className="text-slate-400">{renderInline(content)}</span>
+            </div>
+          );
+        }
+
+        // Обычный текст
+        return <p key={i} className="text-slate-300">{renderInline(trimmed)}</p>;
       })}
     </div>
   );
