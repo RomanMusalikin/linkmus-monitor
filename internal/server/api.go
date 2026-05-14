@@ -373,6 +373,24 @@ func HandleNodeDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// GET /api/nodes/{name}/history24h — история одного узла за 24 часа
+	if strings.HasSuffix(rest, "/history24h") && r.Method == http.MethodGet {
+		name := strings.TrimSuffix(rest, "/history24h")
+		if name == "" {
+			http.Error(w, `{"error":"node name required"}`, http.StatusBadRequest)
+			return
+		}
+		result := map[string]any{
+			"cpuHistory":    queryCPUHistory(dbConn, name, true),
+			"ramHistory":    queryRAMHistory(dbConn, name, true),
+			"netHistory":    queryNetHistory(dbConn, name, true),
+			"diskHistory":   queryDiskHistory(dbConn, name, true),
+			"diskIOHistory": queryDiskIOHistory(dbConn, name, true),
+		}
+		json.NewEncoder(w).Encode(result)
+		return
+	}
+
 	// PUT /api/nodes/{name}/alias
 	if strings.HasSuffix(rest, "/alias") && r.Method == http.MethodPut {
 		name := strings.TrimSuffix(rest, "/alias")

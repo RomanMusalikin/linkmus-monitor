@@ -5,7 +5,7 @@ import {
   Activity, Monitor, Terminal, List, Shield, TrendingUp,
   Wifi, MemoryStick, Trash2, Download, Pencil, Check, X
 } from 'lucide-react';
-import { deleteNode, fetchNodes, fetchNodeHistory, renameNode, getPortSettings, getNodePortOverride, saveNodePortOverride, getNodeServiceVisibility, saveNodeServiceVisibility, getCustomServices, fetchNodeCustomPorts, saveNodeCustomPorts } from '../lib/api';
+import { deleteNode, fetchNodes, fetchNodeHistory, fetchNodeHistory24h, renameNode, getPortSettings, getNodePortOverride, saveNodePortOverride, getNodeServiceVisibility, saveNodeServiceVisibility, getCustomServices, fetchNodeCustomPorts, saveNodeCustomPorts } from '../lib/api';
 import { useUtcOffset } from '../hooks/useUtcOffset';
 import { shiftTime, nowWithOffset } from '../lib/time';
 import { useNodesContext } from '../context/NodesContext';
@@ -297,11 +297,10 @@ export default function NodeDetail() {
   // Обновляем fullHistory каждые 3 минуты пока открыта вкладка 24ч
   useEffect(() => {
     if (historyRange !== '24h') return;
-    const interval = setInterval(async () => {
-      try {
-        const all = await fetchNodes(true);
-        setFullHistory((all || []).find(n => n.name === nodeId) || null);
-      } catch { /* ignore */ }
+    const interval = setInterval(() => {
+      fetchNodeHistory24h(nodeId)
+        .then(data => setFullHistory(data || null))
+        .catch(() => {});
     }, 3 * 60 * 1000);
     return () => clearInterval(interval);
   }, [historyRange, nodeId]);
@@ -321,16 +320,13 @@ export default function NodeDetail() {
   async function selectHistoryRange(range) {
     setHistoryRange(range);
     if (range === '24h') {
-      if (!fullHistory) {
-        setLoadingFull(true);
-        try {
-          const all = await fetchNodes(true);
-          setFullHistory((all || []).find(n => n.name === nodeId) || null);
-        } finally {
-          setLoadingFull(false);
-        }
-      }
       setLongHistory(null);
+      // Если кеш есть — показываем сразу, обновляем в фоне
+      if (!fullHistory) setLoadingFull(true);
+      fetchNodeHistory24h(nodeId)
+        .then(data => setFullHistory(data || null))
+        .catch(() => {})
+        .finally(() => setLoadingFull(false));
       return;
     }
     setLoadingLong(true);
@@ -346,8 +342,8 @@ export default function NodeDetail() {
     if (fullHistory) { setFullHistory(null); return; }
     setLoadingFull(true);
     try {
-      const all = await fetchNodes(true);
-      setFullHistory((all || []).find(n => n.name === nodeId) || null);
+      const data = await fetchNodeHistory24h(nodeId);
+      setFullHistory(data || null);
     } finally {
       setLoadingFull(false);
     }
