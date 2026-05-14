@@ -31,6 +31,8 @@ type AlertSettings struct {
 	TGChatID   string `json:"tgChatID"`
 	TGTopicID  int    `json:"tgTopicID"`
 	TGEnabled  bool   `json:"tgEnabled"`
+
+	UTCOffset int `json:"utcOffset"` // смещение от UTC в часах, например 3 для Москвы
 }
 
 func GetAlertSettings(db *sql.DB) AlertSettings {
@@ -39,11 +41,13 @@ func GetAlertSettings(db *sql.DB) AlertSettings {
 	s.CooldownMin = 30
 	db.QueryRow(`SELECT smtp_host,smtp_port,smtp_user,smtp_pass,from_email,to_email,
 		cpu_threshold,ram_threshold,cooldown_min,enabled,
-		COALESCE(tg_bot_token,''),COALESCE(tg_chat_id,''),COALESCE(tg_topic_id,0),COALESCE(tg_enabled,0)
+		COALESCE(tg_bot_token,''),COALESCE(tg_chat_id,''),COALESCE(tg_topic_id,0),COALESCE(tg_enabled,0),
+		COALESCE(utc_offset,0)
 		FROM alert_settings WHERE id=1`).
 		Scan(&s.SMTPHost, &s.SMTPPort, &s.SMTPUser, &s.SMTPPass,
 			&s.FromEmail, &s.ToEmail, &s.CPUThreshold, &s.RAMThreshold, &s.CooldownMin, &s.Enabled,
-			&s.TGBotToken, &s.TGChatID, &s.TGTopicID, &s.TGEnabled)
+			&s.TGBotToken, &s.TGChatID, &s.TGTopicID, &s.TGEnabled,
+			&s.UTCOffset)
 	return s
 }
 
@@ -53,8 +57,8 @@ func SaveAlertSettings(db *sql.DB, s AlertSettings) error {
 	_, err := db.Exec(`INSERT INTO alert_settings
 		(id,smtp_host,smtp_port,smtp_user,smtp_pass,from_email,to_email,
 		 cpu_threshold,ram_threshold,cooldown_min,enabled,
-		 tg_bot_token,tg_chat_id,tg_topic_id,tg_enabled)
-		VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+		 tg_bot_token,tg_chat_id,tg_topic_id,tg_enabled,utc_offset)
+		VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
 		ON CONFLICT(id) DO UPDATE SET
 		  smtp_host=excluded.smtp_host, smtp_port=excluded.smtp_port,
 		  smtp_user=excluded.smtp_user, smtp_pass=excluded.smtp_pass,
@@ -62,10 +66,11 @@ func SaveAlertSettings(db *sql.DB, s AlertSettings) error {
 		  cpu_threshold=excluded.cpu_threshold, ram_threshold=excluded.ram_threshold,
 		  cooldown_min=excluded.cooldown_min, enabled=excluded.enabled,
 		  tg_bot_token=excluded.tg_bot_token, tg_chat_id=excluded.tg_chat_id,
-		  tg_topic_id=excluded.tg_topic_id, tg_enabled=excluded.tg_enabled`,
+		  tg_topic_id=excluded.tg_topic_id, tg_enabled=excluded.tg_enabled,
+		  utc_offset=excluded.utc_offset`,
 		s.SMTPHost, s.SMTPPort, s.SMTPUser, s.SMTPPass, s.FromEmail, s.ToEmail,
 		s.CPUThreshold, s.RAMThreshold, s.CooldownMin, s.Enabled,
-		s.TGBotToken, s.TGChatID, s.TGTopicID, s.TGEnabled)
+		s.TGBotToken, s.TGChatID, s.TGTopicID, s.TGEnabled, s.UTCOffset)
 	return err
 }
 

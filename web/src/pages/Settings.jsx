@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield, Bot, Plus, Trash2, ChevronDown } from 'lucide-react';
+import { Bell, Mail, Save, Send, Cpu, MemoryStick, MessageCircle, Hash, Shield, Bot, Plus, Trash2, ChevronDown, Clock } from 'lucide-react';
+import { setUtcOffsetGlobal } from '../hooks/useUtcOffset';
 import { getAlertSettings, saveAlertSettings, sendTestEmail, sendTestTelegram, getPortSettings, savePortSettings, getGigachatSettings, saveGigachatSettings, getCustomServices, createCustomService, deleteCustomService } from '../lib/api';
 import { useNodesContext } from '../context/NodesContext';
 
@@ -80,7 +81,25 @@ const defaultSettings = {
   fromEmail: '', toEmail: '',
   cpuThreshold: 0, ramThreshold: 0, cooldownMin: 30, enabled: false,
   tgBotToken: '', tgChatID: '', tgTopicID: 0, tgEnabled: false,
+  utcOffset: 0,
 };
+
+const UTC_OFFSETS = [
+  { value: -12, label: 'UTC−12' }, { value: -11, label: 'UTC−11' },
+  { value: -10, label: 'UTC−10' }, { value: -9,  label: 'UTC−9' },
+  { value: -8,  label: 'UTC−8' },  { value: -7,  label: 'UTC−7' },
+  { value: -6,  label: 'UTC−6' },  { value: -5,  label: 'UTC−5' },
+  { value: -4,  label: 'UTC−4' },  { value: -3,  label: 'UTC−3' },
+  { value: -2,  label: 'UTC−2' },  { value: -1,  label: 'UTC−1' },
+  { value:  0,  label: 'UTC±0' },
+  { value:  1,  label: 'UTC+1' },  { value:  2,  label: 'UTC+2' },
+  { value:  3,  label: 'UTC+3 (Москва)' },
+  { value:  4,  label: 'UTC+4' },  { value:  5,  label: 'UTC+5' },
+  { value:  6,  label: 'UTC+6' },  { value:  7,  label: 'UTC+7' },
+  { value:  8,  label: 'UTC+8' },  { value:  9,  label: 'UTC+9' },
+  { value: 10,  label: 'UTC+10' }, { value: 11,  label: 'UTC+11' },
+  { value: 12,  label: 'UTC+12' },
+];
 
 const defaultPortSettings = {
   sshPort: 22, rdpPort: 3389, smbPort: 445, httpPort: 80, httpsPort: 443, winrmPort: 5985,
@@ -192,6 +211,7 @@ export default function Settings() {
     setSaving(true); setSaveMsg('');
     try {
       await saveAlertSettings(s);
+      setUtcOffsetGlobal(s.utcOffset ?? 0);
       setSaveMsg('✓ Сохранено');
       setTimeout(() => setSaveMsg(''), 2500);
     } catch (err) {
@@ -439,6 +459,20 @@ export default function Settings() {
 
       {tab === 'notifications' && (
         <form onSubmit={handleSave} className="space-y-5">
+
+          {/* ── Часовой пояс ── */}
+          <Section title="Дата и время" icon={Clock} iconColor="text-sky-400">
+            <Field label="Часовой пояс (UTC-смещение)" hint="Все метки времени на графиках будут отображаться в выбранном поясе">
+              <Select
+                value={s.utcOffset ?? 0}
+                onChange={e => setS(p => ({ ...p, utcOffset: parseInt(e.target.value, 10) }))}
+              >
+                {UTC_OFFSETS.map(o => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </Select>
+            </Field>
+          </Section>
 
           {/* ── Пороги алертов ── */}
           <Section title="Пороги уведомлений" icon={Bell} iconColor="text-amber-400">

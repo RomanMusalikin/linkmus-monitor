@@ -6,6 +6,8 @@ import {
   Wifi, MemoryStick, Trash2, Download, Pencil, Check, X
 } from 'lucide-react';
 import { deleteNode, fetchNodes, fetchNodeHistory, renameNode, getPortSettings, getNodePortOverride, saveNodePortOverride, getNodeServiceVisibility, saveNodeServiceVisibility, getCustomServices, fetchNodeCustomPorts, saveNodeCustomPorts } from '../lib/api';
+import { useUtcOffset } from '../hooks/useUtcOffset';
+import { shiftTime, nowWithOffset } from '../lib/time';
 import { useNodesContext } from '../context/NodesContext';
 import { useVersion } from '../hooks/useVersion';
 import CpuGauge from '../components/charts/CpuGauge';
@@ -221,6 +223,7 @@ export default function NodeDetail() {
   const { nodeId } = useParams();
   const navigate = useNavigate();
   const { data: nodes, loading, error, serverVersion, refresh } = useNodesContext();
+  const utcOffset = useUtcOffset();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [renaming, setRenaming] = useState(false);
@@ -287,9 +290,21 @@ export default function NodeDetail() {
     setLiveBuffer(
       n.cpuHistory
         .filter(p => p.value != null)
-        .map(p => ({ value: p.value, time: p.time }))
+        .map(p => ({ value: p.value, time: shiftTime(p.time, utcOffset) }))
     );
   }, [nodes, nodeId]);
+
+  // Обновляем fullHistory каждые 3 минуты пока открыта вкладка 24ч
+  useEffect(() => {
+    if (historyRange !== '24h') return;
+    const interval = setInterval(async () => {
+      try {
+        const all = await fetchNodes(true);
+        setFullHistory((all || []).find(n => n.name === nodeId) || null);
+      } catch { /* ignore */ }
+    }, 3 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, [historyRange, nodeId]);
 
   // Накапливаем живые точки с каждым polling-обновлением (каждые 10с)
   const currentCpu = nodes?.find(n => n.name === nodeId)?.cpu;
@@ -298,7 +313,7 @@ export default function NodeDetail() {
     if (currentCpu == null) return;
     const currentNode = nodes?.find(n => n.name === nodeId);
     if (!currentNode?.online) return;
-    const time = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const time = nowWithOffset(utcOffset);
     setLiveBuffer(prev => [...prev.slice(-59), { value: currentCpu, time }]);
   }, [currentCpu, currentTs]);
 
@@ -697,6 +712,8 @@ export default function NodeDetail() {
             : v => [v != null ? `${v.toFixed(2)} GB` : '—', 'RAM'];
 
         const xInterval = Math.max(0, Math.floor(histData.length / 6) - 1);
+        const xTickFmt = t => shiftTime(t, utcOffset);
+        const xLabelFmt = t => shiftTime(t, utcOffset);
         const tooltipStyle = {
           background: '#0f172a', border: '1px solid #334155',
           borderRadius: 10, fontSize: 12, boxShadow: '0 4px 24px rgba(0,0,0,0.4)',
@@ -737,9 +754,9 @@ export default function NodeDetail() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
+                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => xTickFmt(t).slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
                     <YAxis {...axisProps} domain={[0, 100]} ticks={[0, 25, 50, 75, 100]} tickFormatter={v => `${v}%`} width={36} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={v => [v != null ? `${v.toFixed(1)}%` : '—', 'CPU']} labelStyle={{ color: '#64748b' }} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={v => [v != null ? `${v.toFixed(1)}%` : '—', 'CPU']} labelFormatter={xLabelFmt} labelStyle={{ color: '#64748b' }} />
                     <Area type="monotone" dataKey="cpu" stroke="#3b82f6" strokeWidth={2} fill="url(#lhCpu)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -756,11 +773,11 @@ export default function NodeDetail() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
+                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => xTickFmt(t).slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
                     <YAxis {...axisProps} domain={src24 ? [0, 100] : ['auto', 'auto']}
                       ticks={src24 ? [0, 25, 50, 75, 100] : undefined}
                       tickFormatter={src24 ? v => `${v}%` : v => `${v.toFixed(0)}G`} width={36} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={ramFmt} labelStyle={{ color: '#64748b' }} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={ramFmt} labelFormatter={xLabelFmt} labelStyle={{ color: '#64748b' }} />
                     <Area type="monotone" dataKey="ram" stroke="#8b5cf6" strokeWidth={2} fill="url(#lhRam)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
                 </ResponsiveContainer>
@@ -781,9 +798,9 @@ export default function NodeDetail() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
+                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => xTickFmt(t).slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
                     <YAxis {...axisProps} tickFormatter={v => fmtBytes(v)} width={58} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [v != null ? fmtBytes(v) : '—', name === 'diskRead' ? '↓ Чтение' : '↑ Запись']} labelStyle={{ color: '#64748b' }} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [v != null ? fmtBytes(v) : '—', name === 'diskRead' ? '↓ Чтение' : '↑ Запись']} labelFormatter={xLabelFmt} labelStyle={{ color: '#64748b' }} />
                     <Area type="monotone" dataKey="diskRead" stroke="#f59e0b" strokeWidth={2} fill="url(#lhDiskRead)" dot={false} isAnimationActive={false} connectNulls={false} />
                     <Area type="monotone" dataKey="diskWrite" stroke="#fb923c" strokeWidth={2} fill="url(#lhDiskWrite)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
@@ -805,9 +822,9 @@ export default function NodeDetail() {
                       </linearGradient>
                     </defs>
                     <CartesianGrid strokeDasharray="2 4" stroke="#1e293b" vertical={false} />
-                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => t.slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
+                    <XAxis dataKey="time" {...axisProps} interval={xInterval} tickFormatter={t => xTickFmt(t).slice(0, 5)} angle={-20} textAnchor="end" dy={4} height={30} />
                     <YAxis {...axisProps} tickFormatter={v => fmtBytes(v)} width={58} />
-                    <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [v != null ? fmtBytes(v) : '—', name === 'netRecv' ? '↓ Вход' : '↑ Выход']} labelStyle={{ color: '#64748b' }} />
+                    <Tooltip contentStyle={tooltipStyle} formatter={(v, name) => [v != null ? fmtBytes(v) : '—', name === 'netRecv' ? '↓ Вход' : '↑ Выход']} labelFormatter={xLabelFmt} labelStyle={{ color: '#64748b' }} />
                     <Area type="monotone" dataKey="netRecv" stroke="#06b6d4" strokeWidth={2} fill="url(#lhRecv)" dot={false} isAnimationActive={false} connectNulls={false} />
                     <Area type="monotone" dataKey="netSent" stroke="#6366f1" strokeWidth={2} fill="url(#lhSent)" dot={false} isAnimationActive={false} connectNulls={false} />
                   </AreaChart>
