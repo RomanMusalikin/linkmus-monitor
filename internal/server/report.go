@@ -269,7 +269,13 @@ func gatherStats(db *sql.DB, nodes []string, period, from, to string) []nodeStat
 			s.LastSeen = n.LastSeen
 		}
 
-		useHourly := period == "7d" || period == "30d" || period == "custom"
+		useHourly := period == "7d" || period == "30d"
+		if period == "custom" {
+			// для коротких кастомных периодов (<48ч) используем сырые метрики
+			sinceT, _ := time.Parse(time.RFC3339, since)
+			untilT, _ := time.Parse(time.RFC3339, until)
+			useHourly = untilT.Sub(sinceT) >= 48*time.Hour
+		}
 		if useHourly {
 			row := db.QueryRow(`
 				SELECT
@@ -552,10 +558,11 @@ func buildPrompt(stats []nodeStats, period, from, to string) string {
 	sb.WriteString("  - до 75% — норма\n")
 	sb.WriteString("  - 75–90% — умеренное использование\n")
 	sb.WriteString("  - выше 90% — критично\n\n")
-	sb.WriteString("Диск:\n")
-	sb.WriteString("  - до 80% — норма\n")
-	sb.WriteString("  - 80–90% — следует упомянуть\n")
-	sb.WriteString("  - выше 90% — критично\n\n")
+	sb.WriteString("Диск (заполненность):\n")
+	sb.WriteString("  - до 85% — норма, не требует комментария\n")
+	sb.WriteString("  - 85–92% — следует упомянуть кратко\n")
+	sb.WriteString("  - выше 92% — критично, требует внимания\n")
+	sb.WriteString("  - ВАЖНО: значения 50–80% — абсолютная норма для рабочего сервера, не упоминай их как проблему\n\n")
 	sb.WriteString("Диск I/O:\n")
 	sb.WriteString("  - до 50 МБ/с — типичная нагрузка, не требует комментария\n")
 	sb.WriteString("  - 50–200 МБ/с — умеренно высокая, упомяни если пики частые\n")
