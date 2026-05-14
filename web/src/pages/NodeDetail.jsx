@@ -1009,7 +1009,7 @@ export default function NodeDetail() {
               <div className="pt-2 border-t border-slate-700/40">
                 <div className="text-xs text-slate-500 font-medium uppercase tracking-wider mb-2">История RAM</div>
                 <ResponsiveContainer width="100%" height={60}>
-                  <AreaChart data={node.ramHistory} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
+                  <AreaChart data={(node.ramHistory || []).map(p => ({ ...p, time: shiftTime(p.time, utcOffset) }))} margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
                     <defs>
                       <linearGradient id="ramGrad" x1="0" y1="0" x2="0" y2="1">
                         <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.3} />
@@ -1098,7 +1098,7 @@ export default function NodeDetail() {
               <div className="pt-3 border-t border-slate-700/40">
                 <div className="text-xs text-slate-500 font-medium mb-2 uppercase tracking-wider">Заполнение диска</div>
                 <ResponsiveContainer width="100%" height={60}>
-                  <AreaChart data={(node.diskHistory || []).filter(p => p.value != null).map(p => ({ time: p.time, value: p.value }))}
+                  <AreaChart data={(node.diskHistory || []).filter(p => p.value != null).map(p => ({ time: shiftTime(p.time, utcOffset), value: p.value }))}
                     margin={{ top: 2, right: 0, bottom: 0, left: 0 }}>
                     <defs>
                       <linearGradient id="diskGrad" x1="0" y1="0" x2="0" y2="1">
@@ -1171,7 +1171,7 @@ export default function NodeDetail() {
             })()}
 
             {/* График растягивается на оставшееся место */}
-            <NetworkLines data={node.netHistory || []} className="flex-1 min-h-[160px]" />
+            <NetworkLines data={(node.netHistory || []).map(p => ({ ...p, time: shiftTime(p.time, utcOffset) }))} className="flex-1 min-h-[160px]" />
           </div>
         </Card>
 
