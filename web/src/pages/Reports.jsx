@@ -469,15 +469,15 @@ export default function Reports() {
 
         {/* Правая колонка — результат */}
         <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-5 flex flex-col min-h-[400px]">
-          <div className="flex items-start justify-between mb-4 pb-3 border-b border-slate-700/40 gap-3">
-            <div className="flex items-center gap-2 min-w-0">
+          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-700/40 gap-3 min-w-0">
+            <div className="flex items-center gap-2 min-w-0 overflow-hidden">
               <Bot className="w-4 h-4 text-violet-400 flex-shrink-0" />
-              <div className="min-w-0">
-                <span className="text-sm font-semibold text-slate-200">Отчёт GigaChat</span>
+              <div className="flex items-baseline gap-1.5 min-w-0 overflow-hidden">
+                <span className="text-sm font-semibold text-slate-200 whitespace-nowrap">Отчёт GigaChat</span>
                 {reportMeta && (
-                  <div className="text-xs text-slate-500 mt-0.5 truncate">
-                    {periodLabel(reportMeta.period, reportMeta.fromDate, reportMeta.toDate, utcOffset)}
-                  </div>
+                  <span className="text-xs text-slate-500 truncate whitespace-nowrap">
+                    · {periodLabel(reportMeta.period, reportMeta.fromDate, reportMeta.toDate, utcOffset)}
+                  </span>
                 )}
               </div>
             </div>
