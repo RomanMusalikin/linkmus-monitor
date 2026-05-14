@@ -611,8 +611,12 @@ func queryCPUHistory(db *sql.DB, name string, full bool) []CpuPoint {
 		return result
 	}
 
+	now := time.Now().UTC()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+
 	rows, err := db.Query(
-		`SELECT cpu_usage, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
+		`SELECT cpu_usage, timestamp FROM metrics WHERE node_name = ? AND timestamp >= ? ORDER BY timestamp ASC`,
+		name, start.Format(time.RFC3339))
 	if err != nil {
 		return nil
 	}
@@ -633,16 +637,10 @@ func queryCPUHistory(db *sql.DB, name string, full bool) []CpuPoint {
 	if len(vals) == 0 {
 		return nil
 	}
-
-	now := time.Now().Local()
-	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
 	type bucket struct{ sum float64; n int }
 	grid := make(map[time.Time]*bucket)
 	for i, t := range times {
-		key := t.Local().Truncate(dayBucketDur)
-		if key.Before(start) {
-			continue
-		}
+		key := t.UTC().Truncate(dayBucketDur)
 		if grid[key] == nil {
 			grid[key] = &bucket{}
 		}
@@ -652,7 +650,7 @@ func queryCPUHistory(db *sql.DB, name string, full bool) []CpuPoint {
 
 	var result []CpuPoint
 	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
-		label := t.Format("15:04")
+		label := t.UTC().Format("15:04")
 		if b := grid[t]; b != nil {
 			avg := int(b.sum / float64(b.n))
 			result = append(result, CpuPoint{Value: &avg, Time: label})
@@ -697,8 +695,12 @@ func queryRAMHistory(db *sql.DB, name string, full bool) []RamPoint {
 		return result
 	}
 
+	now := time.Now().UTC()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+
 	rows, err := db.Query(
-		`SELECT ram_usage, ram_total, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
+		`SELECT ram_usage, ram_total, timestamp FROM metrics WHERE node_name = ? AND timestamp >= ? ORDER BY timestamp ASC`,
+		name, start.Format(time.RFC3339))
 	if err != nil {
 		return nil
 	}
@@ -726,15 +728,10 @@ func queryRAMHistory(db *sql.DB, name string, full bool) []RamPoint {
 		return nil
 	}
 
-	now := time.Now().Local()
-	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
 	type bucket struct{ sum float64; n int }
 	grid := make(map[time.Time]*bucket)
 	for _, r := range all {
-		key := r.t.Local().Truncate(dayBucketDur)
-		if key.Before(start) {
-			continue
-		}
+		key := r.t.UTC().Truncate(dayBucketDur)
 		if grid[key] == nil {
 			grid[key] = &bucket{}
 		}
@@ -744,7 +741,7 @@ func queryRAMHistory(db *sql.DB, name string, full bool) []RamPoint {
 
 	var result []RamPoint
 	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
-		label := t.Format("15:04")
+		label := t.UTC().Format("15:04")
 		if b := grid[t]; b != nil {
 			avg := int(b.sum / float64(b.n))
 			result = append(result, RamPoint{Value: &avg, Time: label})
@@ -780,9 +777,13 @@ func queryNetHistory(db *sql.DB, name string, full bool) []NetPoint {
 		return result
 	}
 
+	now := time.Now().UTC()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+
 	rows, err := db.Query(`
 		SELECT COALESCE(net_bytes_recv,0), COALESCE(net_bytes_sent,0), timestamp
-		FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
+		FROM metrics WHERE node_name = ? AND timestamp >= ? ORDER BY timestamp ASC`,
+		name, start.Format(time.RFC3339))
 	if err != nil {
 		return nil
 	}
@@ -806,15 +807,10 @@ func queryNetHistory(db *sql.DB, name string, full bool) []NetPoint {
 		return nil
 	}
 
-	now := time.Now().Local()
-	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
 	type bucket struct{ sumR, sumS float64; n int }
 	grid := make(map[time.Time]*bucket)
 	for _, r := range all {
-		key := r.t.Local().Truncate(dayBucketDur)
-		if key.Before(start) {
-			continue
-		}
+		key := r.t.UTC().Truncate(dayBucketDur)
 		if grid[key] == nil {
 			grid[key] = &bucket{}
 		}
@@ -825,7 +821,7 @@ func queryNetHistory(db *sql.DB, name string, full bool) []NetPoint {
 
 	var result []NetPoint
 	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
-		label := t.Format("15:04")
+		label := t.UTC().Format("15:04")
 		if b := grid[t]; b != nil {
 			n := float64(b.n)
 			r, s := b.sumR/n, b.sumS/n
@@ -867,8 +863,12 @@ func queryDiskHistory(db *sql.DB, name string, full bool) []DiskPoint {
 		return result
 	}
 
+	now := time.Now().UTC()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+
 	rows, err := db.Query(
-		`SELECT disk_usage, timestamp FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
+		`SELECT disk_usage, timestamp FROM metrics WHERE node_name = ? AND timestamp >= ? ORDER BY timestamp ASC`,
+		name, start.Format(time.RFC3339))
 	if err != nil {
 		return nil
 	}
@@ -890,15 +890,10 @@ func queryDiskHistory(db *sql.DB, name string, full bool) []DiskPoint {
 		return nil
 	}
 
-	now := time.Now().Local()
-	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
 	type bucket struct{ sum float64; n int }
 	grid := make(map[time.Time]*bucket)
 	for i, t := range times {
-		key := t.Local().Truncate(dayBucketDur)
-		if key.Before(start) {
-			continue
-		}
+		key := t.UTC().Truncate(dayBucketDur)
 		if grid[key] == nil {
 			grid[key] = &bucket{}
 		}
@@ -908,7 +903,7 @@ func queryDiskHistory(db *sql.DB, name string, full bool) []DiskPoint {
 
 	var result []DiskPoint
 	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
-		label := t.Format("15:04")
+		label := t.UTC().Format("15:04")
 		if b := grid[t]; b != nil {
 			avg := int(b.sum / float64(b.n))
 			result = append(result, DiskPoint{Value: &avg, Time: label})
@@ -944,9 +939,13 @@ func queryDiskIOHistory(db *sql.DB, name string, full bool) []DiskIOPoint {
 		return result
 	}
 
+	now := time.Now().UTC()
+	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
+
 	rows, err := db.Query(`
 		SELECT COALESCE(disk_read_sec,0), COALESCE(disk_write_sec,0), timestamp
-		FROM metrics WHERE node_name = ? ORDER BY timestamp ASC LIMIT 8640`, name)
+		FROM metrics WHERE node_name = ? AND timestamp >= ? ORDER BY timestamp ASC`,
+		name, start.Format(time.RFC3339))
 	if err != nil {
 		return nil
 	}
@@ -970,15 +969,10 @@ func queryDiskIOHistory(db *sql.DB, name string, full bool) []DiskIOPoint {
 		return nil
 	}
 
-	now := time.Now().Local()
-	start := now.Add(-24 * time.Hour).Truncate(dayBucketDur)
 	type bucket struct{ sumR, sumW float64; n int }
 	grid := make(map[time.Time]*bucket)
 	for _, rec := range all {
-		key := rec.t.Local().Truncate(dayBucketDur)
-		if key.Before(start) {
-			continue
-		}
+		key := rec.t.UTC().Truncate(dayBucketDur)
 		if grid[key] == nil {
 			grid[key] = &bucket{}
 		}
@@ -989,7 +983,7 @@ func queryDiskIOHistory(db *sql.DB, name string, full bool) []DiskIOPoint {
 
 	var result []DiskIOPoint
 	for t := start; !t.After(now); t = t.Add(dayBucketDur) {
-		label := t.Format("15:04")
+		label := t.UTC().Format("15:04")
 		if b := grid[t]; b != nil {
 			n := float64(b.n)
 			r, w := b.sumR/n, b.sumW/n
