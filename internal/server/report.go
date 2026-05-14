@@ -404,13 +404,12 @@ func periodToRange(period, from, to string) (string, string) {
 	until := now.Format(time.RFC3339)
 
 	if period == "custom" && from != "" && to != "" {
-		loc := time.Local
-		// пробуем datetime-local формат, затем date-only
+		// фронтенд отправляет UTC-время (datetime-local без таймзоны = UTC)
 		parseCustom := func(s string) (time.Time, error) {
-			if t, err := time.ParseInLocation("2006-01-02T15:04", s, loc); err == nil {
+			if t, err := time.ParseInLocation("2006-01-02T15:04", s, time.UTC); err == nil {
 				return t, nil
 			}
-			return time.ParseInLocation("2006-01-02", s, loc)
+			return time.ParseInLocation("2006-01-02", s, time.UTC)
 		}
 		f, err1 := parseCustom(from)
 		t, err2 := parseCustom(to)

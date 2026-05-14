@@ -2,6 +2,7 @@ import { useState, useContext, useEffect, useCallback } from 'react';
 import { FileText, Bot, Clock, RefreshCw, CheckSquare, Square, ChevronDown, ChevronUp, AlertCircle, CalendarRange, Download, Trash2, History } from 'lucide-react';
 import { NodesContext } from '../context/NodesContext';
 import { generateReport, getReportHistory, getReportById, deleteReport } from '../lib/api';
+import { useUtcOffset } from '../hooks/useUtcOffset';
 
 const PERIODS = [
   { value: '1h',  label: 'Последний час' },
@@ -13,28 +14,35 @@ const PERIODS = [
   { value: 'custom', label: 'Произвольный период' },
 ];
 
-function nowStr() {
+// Возвращает текущее время в UTC как "YYYY-MM-DDTHH:MM"
+function nowStrUTC() {
   const d = new Date();
-  return d.getFullYear() + '-'
-    + String(d.getMonth() + 1).padStart(2, '0') + '-'
-    + String(d.getDate()).padStart(2, '0') + 'T'
-    + String(d.getHours()).padStart(2, '0') + ':'
-    + String(d.getMinutes()).padStart(2, '0');
+  return d.getUTCFullYear() + '-'
+    + String(d.getUTCMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getUTCDate()).padStart(2, '0') + 'T'
+    + String(d.getUTCHours()).padStart(2, '0') + ':'
+    + String(d.getUTCMinutes()).padStart(2, '0');
 }
-function daysAgoStr(n) {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  return d.getFullYear() + '-'
-    + String(d.getMonth() + 1).padStart(2, '0') + '-'
-    + String(d.getDate()).padStart(2, '0') + 'T'
-    + String(d.getHours()).padStart(2, '0') + ':'
-    + String(d.getMinutes()).padStart(2, '0');
+function daysAgoStrUTC(n) {
+  const d = new Date(Date.now() - n * 86400000);
+  return d.getUTCFullYear() + '-'
+    + String(d.getUTCMonth() + 1).padStart(2, '0') + '-'
+    + String(d.getUTCDate()).padStart(2, '0') + 'T'
+    + String(d.getUTCHours()).padStart(2, '0') + ':'
+    + String(d.getUTCMinutes()).padStart(2, '0');
+}
+// Смещает строку "YYYY-MM-DDTHH:MM" (UTC) на h часов
+function shiftDateTimeStr(s, h) {
+  if (!s || h === 0) return s;
+  const d = new Date(s + ':00Z');
+  d.setTime(d.getTime() + h * 3600000);
+  return d.toISOString().slice(0, 16);
 }
 
-function periodLabel(period, fromDate, toDate) {
+function periodLabel(period, fromDate, toDate, utcOffset = 0) {
   if (period === 'custom' && fromDate && toDate) {
-    const f = fromDate.replace('T', ' ');
-    const t = toDate.replace('T', ' ');
+    const f = shiftDateTimeStr(fromDate, utcOffset).replace('T', ' ');
+    const t = shiftDateTimeStr(toDate, utcOffset).replace('T', ' ');
     return `${f} — ${t}`;
   }
   return PERIODS.find(p => p.value === period)?.label || period;
@@ -166,10 +174,11 @@ function exportTxt(report, label) {
 
 export default function Reports() {
   const { data: nodes } = useContext(NodesContext);
+  const utcOffset = useUtcOffset();
   const [selected, setSelected] = useState([]);
   const [period, setPeriod] = useState('24h');
-  const [dateFrom, setDateFrom] = useState(daysAgoStr(7));
-  const [dateTo, setDateTo] = useState(nowStr());
+  const [dateFrom, setDateFrom] = useState(daysAgoStrUTC(7));
+  const [dateTo, setDateTo] = useState(nowStrUTC());
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState('');
   const [reportMeta, setReportMeta] = useState(null); // { period, fromDate, toDate, nodes }
@@ -311,9 +320,9 @@ export default function Reports() {
                   <label className="block text-xs text-slate-400 font-medium mb-1 uppercase tracking-wider">С</label>
                   <input
                     type="datetime-local"
-                    value={dateFrom}
-                    max={dateTo}
-                    onChange={e => setDateFrom(e.target.value)}
+                    value={shiftDateTimeStr(dateFrom, utcOffset)}
+                    max={shiftDateTimeStr(dateTo, utcOffset)}
+                    onChange={e => setDateFrom(shiftDateTimeStr(e.target.value, -utcOffset))}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
                       outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/20 transition-colors
                       [color-scheme:dark]"
@@ -323,10 +332,10 @@ export default function Reports() {
                   <label className="block text-xs text-slate-400 font-medium mb-1 uppercase tracking-wider">По</label>
                   <input
                     type="datetime-local"
-                    value={dateTo}
-                    min={dateFrom}
-                    max={nowStr()}
-                    onChange={e => setDateTo(e.target.value)}
+                    value={shiftDateTimeStr(dateTo, utcOffset)}
+                    min={shiftDateTimeStr(dateFrom, utcOffset)}
+                    max={shiftDateTimeStr(nowStrUTC(), utcOffset)}
+                    onChange={e => setDateTo(shiftDateTimeStr(e.target.value, -utcOffset))}
                     className="w-full px-3 py-2 rounded-lg bg-slate-900/60 border border-slate-700 text-slate-200 text-sm
                       outline-none focus:border-violet-500/60 focus:ring-1 focus:ring-violet-500/20 transition-colors
                       [color-scheme:dark]"
@@ -431,7 +440,7 @@ export default function Reports() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 mb-0.5">
                             <span className="text-xs font-medium text-slate-300 truncate">
-                              {periodLabel(item.period, item.fromDate, item.toDate)}
+                              {periodLabel(item.period, item.fromDate, item.toDate, utcOffset)}
                             </span>
                           </div>
                           <div className="text-xs text-slate-500 truncate">
@@ -460,21 +469,23 @@ export default function Reports() {
 
         {/* Правая колонка — результат */}
         <div className="bg-slate-800/80 border border-slate-700/50 rounded-2xl p-5 flex flex-col min-h-[400px]">
-          <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-700/40">
-            <div className="flex items-center gap-2">
-              <Bot className="w-4 h-4 text-violet-400" />
-              <span className="text-sm font-semibold text-slate-200">Отчёт GigaChat</span>
-              {reportMeta && (
-                <span className="text-xs text-slate-500 hidden sm:block">
-                  · {periodLabel(reportMeta.period, reportMeta.fromDate, reportMeta.toDate)}
-                </span>
-              )}
+          <div className="flex items-start justify-between mb-4 pb-3 border-b border-slate-700/40 gap-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Bot className="w-4 h-4 text-violet-400 flex-shrink-0" />
+              <div className="min-w-0">
+                <span className="text-sm font-semibold text-slate-200">Отчёт GigaChat</span>
+                {reportMeta && (
+                  <div className="text-xs text-slate-500 mt-0.5 truncate">
+                    {periodLabel(reportMeta.period, reportMeta.fromDate, reportMeta.toDate, utcOffset)}
+                  </div>
+                )}
+              </div>
             </div>
             {report && !loading && (
               <button
                 type="button"
-                onClick={() => exportTxt(report, periodLabel(reportMeta?.period, reportMeta?.fromDate, reportMeta?.toDate))}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium
+                onClick={() => exportTxt(report, periodLabel(reportMeta?.period, reportMeta?.fromDate, reportMeta?.toDate, utcOffset))}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium flex-shrink-0
                   bg-slate-700/60 text-slate-300 border border-slate-600/50 hover:bg-slate-600/60 hover:text-slate-100 transition-colors"
                 title="Скачать как .txt"
               >
