@@ -189,6 +189,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
       <Link
         to={`/node/${node.name}`}
         onClick={e => { if (dragState.happened) e.preventDefault(); }}
+        style={{ touchAction: 'pan-y' }}
         className="group backdrop-blur-sm rounded-2xl border transition-all duration-200 block relative overflow-hidden h-full
           bg-slate-900/80 border-red-900/50 hover:border-red-700/60 hover:bg-slate-900"
       >
@@ -202,7 +203,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
             <div className="flex items-center gap-2.5">
               {dragHandleProps && (
                 <div {...dragHandleProps} onClick={e => e.preventDefault()}
-                  className="flex-shrink-0 p-1 -ml-1 rounded text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity">
+                  className="hidden sm:flex flex-shrink-0 p-1 -ml-1 rounded text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity">
                   <GripVertical className="w-4 h-4" />
                 </div>
               )}
@@ -276,6 +277,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
       onClick={e => {
         if (dragState.happened) { e.preventDefault(); }
       }}
+      style={{ touchAction: 'pan-y' }}
       className="group backdrop-blur-sm rounded-2xl border transition-all duration-200 block relative overflow-hidden h-full
         bg-slate-800/80 border-slate-700/50 hover:border-blue-500/40 hover:bg-slate-800 hover:shadow-xl hover:shadow-blue-500/5"
     >
@@ -289,7 +291,7 @@ export default function NodeCard({ node, onDeleted, dragHandleProps, isDragging,
               <div
                 {...dragHandleProps}
                 onClick={e => e.preventDefault()}
-                className="flex-shrink-0 p-1 -ml-1 rounded text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
+                className="hidden sm:flex flex-shrink-0 p-1 -ml-1 rounded text-slate-600 hover:text-slate-400 cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <GripVertical className="w-4 h-4" />
               </div>
